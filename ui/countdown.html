@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Starting</title>
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/helpers.css" />
+</head>
+<body>
+  <div class="countdown">
+    <div class="countdown-face" id="face" title="Click to start now">
+      <svg viewBox="0 0 168 168" aria-hidden="true">
+        <circle class="track" cx="84" cy="84" r="78" />
+        <circle class="progress" id="ring" cx="84" cy="84" r="78" />
+      </svg>
+      <span class="countdown-num" id="num" aria-live="assertive"></span>
+      <span class="countdown-tip">Esc to cancel</span>
+    </div>
+  </div>
+  <script type="module" src="js/countdown.js"></script>
+</body>
+</html>

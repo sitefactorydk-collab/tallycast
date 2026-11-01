@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSCameraUsageDescription</key>
+  <string>Tallycast shows your webcam in a bubble while you record.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Tallycast records your voice with your screen.</string>
+</dict>
+</plist>

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Select an area</title>
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/helpers.css" />
+</head>
+<body>
+  <div class="overlay" id="overlay">
+    <div class="shade"></div>
+    <div class="crosshair-x" id="cx"></div>
+    <div class="crosshair-y" id="cy"></div>
+    <div class="selection" id="sel"><span class="selection-size tabular" id="sel-size"></span></div>
+    <div class="hint">
+      <strong>Drag to select the area to record</strong>
+      <span>Press Enter to record the whole screen. Press Esc to cancel.</span>
+    </div>
+    <div class="confirm" id="confirm">
+      <button class="pill primary" id="go"><span class="pill-dot"></span>Record this area</button>
+      <button class="pill" id="cancel">Cancel</button>
+    </div>
+  </div>
+  <script type="module" src="js/overlay.js"></script>
+</body>
+</html>

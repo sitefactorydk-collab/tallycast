@@ -1,0 +1,459 @@
+/* Transparent helper windows: overlay, countdown, control bar, webcam, frame. */
+
+html,
+body {
+  background: transparent !important;
+  overflow: hidden;
+}
+
+/* ───────────── area selector ───────────── */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  cursor: crosshair;
+}
+
+.overlay .shade {
+  position: absolute;
+  inset: 0;
+  background: rgba(14, 19, 27, 0.42);
+}
+
+.overlay.has-selection .shade {
+  background: transparent;
+}
+
+.selection {
+  position: absolute;
+  display: none;
+  border: 1.5px solid #fff;
+  outline: 1px solid rgba(14, 19, 27, 0.5);
+  box-shadow: 0 0 0 100vmax rgba(14, 19, 27, 0.42);
+}
+
+.overlay.has-selection .selection {
+  display: block;
+}
+
+.selection-size {
+  position: absolute;
+  left: 0;
+  top: -30px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: #18212e;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.selection.flip .selection-size {
+  top: 6px;
+  left: 6px;
+}
+
+.crosshair-x,
+.crosshair-y {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.crosshair-x {
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+
+.crosshair-y {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.overlay.has-selection .crosshair-x,
+.overlay.has-selection .crosshair-y,
+.overlay.dragging .hint {
+  display: none;
+}
+
+.hint {
+  position: absolute;
+  left: 50%;
+  top: 36px;
+  transform: translateX(-50%);
+  padding: 12px 18px;
+  border-radius: 12px;
+  background: rgba(24, 33, 46, 0.92);
+  color: #fff;
+  text-align: center;
+  pointer-events: none;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.hint strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.hint span {
+  font-size: 12.5px;
+  color: #c4cbd6;
+}
+
+.overlay.has-selection .hint {
+  display: none;
+}
+
+.confirm {
+  position: absolute;
+  display: none;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 12px;
+  background: rgba(24, 33, 46, 0.95);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  cursor: default;
+}
+
+.overlay.has-selection:not(.dragging) .confirm {
+  display: flex;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #e7ebf1;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.pill:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.pill.primary {
+  background: #fff;
+  color: #18212e;
+}
+
+.pill.primary:hover {
+  background: #e9edf3;
+}
+
+.pill-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--tally);
+}
+
+/* ───────────── countdown ───────────── */
+
+.countdown {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.countdown-face {
+  position: relative;
+  width: 168px;
+  height: 168px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(24, 33, 46, 0.86);
+  color: #fff;
+  cursor: pointer;
+}
+
+.countdown-face svg {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+
+.countdown-face circle {
+  fill: none;
+  stroke-width: 5;
+}
+
+.countdown-face .track {
+  stroke: rgba(255, 255, 255, 0.14);
+}
+
+.countdown-face .progress {
+  stroke: var(--tally);
+  stroke-linecap: round;
+}
+
+.countdown-num {
+  font-family: var(--font-display);
+  font-size: 76px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.countdown-num.tick {
+  animation: tick 0.35s ease-out;
+}
+
+@keyframes tick {
+  from {
+    transform: scale(1.25);
+    opacity: 0.3;
+  }
+}
+
+.countdown-tip {
+  position: absolute;
+  bottom: 30px;
+  font-size: 11.5px;
+  color: #aab3c0;
+}
+
+/* ───────────── control bar ───────────── */
+
+.bar-wrap {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  height: 52px;
+  padding: 0 6px 0 4px;
+  gap: 2px;
+  border-radius: 26px;
+  background: rgba(24, 33, 46, 0.95);
+  color: #fff;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.bar-grip {
+  width: 26px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  color: #6f7a8a;
+  cursor: grab;
+}
+
+.bar-grip .icon {
+  pointer-events: none;
+}
+
+.bar-time {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 104px;
+  padding: 0 10px 0 4px;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.tally {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--tally);
+  animation: tally 1.6s ease-in-out infinite;
+}
+
+@keyframes tally {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.bar.paused .tally {
+  animation: none;
+  background: #f2b33d;
+}
+
+.bar.paused .bar-time span {
+  color: #f2b33d;
+}
+
+.bar-btn {
+  height: 40px;
+  min-width: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 20px;
+  background: transparent;
+  color: #e7ebf1;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.bar-btn .icon {
+  width: 17px;
+  height: 17px;
+}
+
+.bar-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.bar-btn.stop {
+  background: var(--tally);
+  color: #fff;
+  padding: 0 14px 0 12px;
+}
+
+.bar-btn.stop .icon {
+  fill: currentColor;
+  width: 14px;
+  height: 14px;
+}
+
+.bar-btn.stop:hover {
+  background: color-mix(in srgb, var(--tally) 85%, #fff);
+}
+
+.bar-btn.discard.armed {
+  background: rgba(255, 91, 94, 0.18);
+  color: #ff9a9c;
+}
+
+.bar-sep {
+  width: 1px;
+  height: 22px;
+  margin: 0 4px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.bar.saving .bar-btn {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ───────────── webcam bubble ───────────── */
+
+.bubble {
+  position: fixed;
+  inset: 4px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #18212e;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.95), 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.bubble video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+  display: block;
+}
+
+.bubble-drag {
+  position: absolute;
+  inset: 0;
+  cursor: move;
+}
+
+.bubble-msg {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18%;
+  text-align: center;
+  color: #c4cbd6;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.bubble-tools {
+  position: absolute;
+  left: 50%;
+  bottom: 10%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 14px;
+  background: rgba(24, 33, 46, 0.88);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.bubble:hover .bubble-tools {
+  opacity: 1;
+}
+
+.bubble-tools button {
+  width: 26px;
+  height: 22px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #e7ebf1;
+  font-size: 11px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+.bubble-tools button[aria-pressed="true"] {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.bubble-tools button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.bubble-tools .icon {
+  width: 13px;
+  height: 13px;
+}
+
+/* ───────────── area outline ───────────── */
+
+.frame {
+  position: fixed;
+  inset: 0;
+  border: 2px solid var(--tally);
+  border-radius: 2px;
+  pointer-events: none;
+}

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Webcam</title>
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/helpers.css" />
+</head>
+<body>
+  <div class="bubble" id="bubble">
+    <video id="video" autoplay muted playsinline></video>
+    <div class="bubble-msg" id="msg">Starting camera…</div>
+    <div class="bubble-drag" data-tauri-drag-region title="Drag to move"></div>
+    <div class="bubble-tools" role="toolbar" aria-label="Webcam size">
+      <button data-size="s" aria-pressed="false" title="Small">S</button>
+      <button data-size="m" aria-pressed="false" title="Medium">M</button>
+      <button data-size="l" aria-pressed="false" title="Large">L</button>
+      <button id="hide" title="Hide webcam" aria-label="Hide webcam"><i data-icon="close"></i></button>
+    </div>
+  </div>
+  <script type="module" src="js/webcam.js"></script>
+</body>
+</html>

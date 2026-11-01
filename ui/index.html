@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tallycast</title>
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/main.css" />
+</head>
+<body>
+  <header class="titlebar" data-tauri-drag-region>
+    <div class="brand" data-tauri-drag-region>
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name" data-tauri-drag-region>Tallycast</span>
+    </div>
+    <div class="titlebar-actions">
+      <button class="tb-btn" id="btn-settings" title="Settings" aria-label="Settings"><i data-icon="gear"></i></button>
+      <span class="tb-sep" aria-hidden="true"></span>
+      <button class="tb-btn" id="btn-min" title="Minimize" aria-label="Minimize"><i data-icon="minimize"></i></button>
+      <button class="tb-btn" id="btn-max" title="Maximize" aria-label="Maximize"><i data-icon="maximize"></i></button>
+      <button class="tb-btn tb-close" id="btn-close" title="Close" aria-label="Close"><i data-icon="close"></i></button>
+    </div>
+  </header>
+
+  <div class="banner" id="ffmpeg-banner" hidden>
+    <i data-icon="alert"></i>
+    <div class="banner-text">
+      <strong>FFmpeg is needed to record.</strong>
+      <span>Run <code>winget install Gyan.FFmpeg</code> in a terminal, then reopen Tallycast. Or point Tallycast to an existing copy.</span>
+    </div>
+    <button class="btn btn-quiet" id="banner-locate">Locate FFmpeg</button>
+  </div>
+
+  <main class="layout">
+    <section class="setup" aria-label="Recording setup">
+      <div class="setup-scroll">
+        <div class="group">
+          <div class="group-head">
+            <h2>What to record</h2>
+            <div class="segmented" role="radiogroup" aria-label="Capture mode">
+              <button role="radio" data-mode="screen" aria-checked="true"><i data-icon="screen"></i>Full screen</button>
+              <button role="radio" data-mode="area" aria-checked="false"><i data-icon="area"></i>Area</button>
+            </div>
+          </div>
+          <div class="display-map" id="display-map" role="radiogroup" aria-label="Display"></div>
+          <p class="display-caption" id="display-caption"></p>
+        </div>
+
+        <div class="group">
+          <h2>Sound</h2>
+          <div class="row">
+            <i data-icon="mic" class="row-icon"></i>
+            <label class="row-label" for="mic-select">Microphone</label>
+            <select id="mic-select" class="select"></select>
+            <label class="switch"><input type="checkbox" id="mic-toggle" /><span aria-hidden="true"></span><span class="visually-hidden">Record microphone</span></label>
+          </div>
+          <div class="row">
+            <i data-icon="speaker" class="row-icon"></i>
+            <div class="row-label">
+              Computer sound
+              <span class="row-hint" id="sys-hint">Everything you hear from your speakers</span>
+            </div>
+            <label class="switch"><input type="checkbox" id="sys-toggle" /><span aria-hidden="true"></span><span class="visually-hidden">Record computer sound</span></label>
+          </div>
+        </div>
+
+        <div class="group">
+          <h2>Camera</h2>
+          <div class="row">
+            <i data-icon="camera" class="row-icon"></i>
+            <label class="row-label" for="cam-select">Webcam bubble</label>
+            <select id="cam-select" class="select" disabled><option>Turn on to choose a camera</option></select>
+            <label class="switch"><input type="checkbox" id="cam-toggle" /><span aria-hidden="true"></span><span class="visually-hidden">Show webcam bubble</span></label>
+          </div>
+          <div class="cam-preview" id="cam-preview" hidden>
+            <video id="cam-video" autoplay muted playsinline></video>
+            <p>The bubble floats over your screen and is recorded with it. Drag it anywhere while recording.</p>
+          </div>
+        </div>
+
+        <div class="group">
+          <h2>Video</h2>
+          <div class="row">
+            <i data-icon="film" class="row-icon"></i>
+            <span class="row-label">Frame rate</span>
+            <div class="segmented segmented-small" role="radiogroup" aria-label="Frame rate">
+              <button role="radio" data-fps="30" aria-checked="true">30 fps</button>
+              <button role="radio" data-fps="60" aria-checked="false">60 fps</button>
+            </div>
+          </div>
+          <div class="row">
+            <span class="row-icon" aria-hidden="true"></span>
+            <label class="row-label" for="quality-select">Quality</label>
+            <select id="quality-select" class="select">
+              <option value="compact">Compact – smaller files</option>
+              <option value="standard">Standard</option>
+              <option value="high">High – sharper text</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="record-dock">
+        <button class="record-btn" id="record-btn">
+          <span class="record-dot" aria-hidden="true"></span>
+          <span id="record-label">Record full screen</span>
+        </button>
+        <p class="record-hint"><kbd id="hotkey-record">Alt+Shift+R</kbd> starts and stops from anywhere. <kbd id="hotkey-pause">Alt+Shift+P</kbd> pauses.</p>
+      </div>
+    </section>
+
+    <section class="library" aria-label="Recordings">
+      <div class="library-head">
+        <h2>Recordings <span class="count" id="rec-count"></span></h2>
+        <button class="btn btn-quiet" id="open-folder"><i data-icon="folder"></i>Open folder</button>
+      </div>
+      <ul class="rec-list" id="rec-list"></ul>
+      <div class="empty" id="empty" hidden>
+        <div class="empty-frame" aria-hidden="true"><span></span></div>
+        <h3>No recordings yet</h3>
+        <p>Choose what to record on the left and press Record. Finished videos land here as MP4 files.</p>
+      </div>
+    </section>
+  </main>
+
+  <dialog class="sheet" id="settings">
+    <form method="dialog">
+      <header class="sheet-head">
+        <h2>Settings</h2>
+        <button class="tb-btn" value="close" aria-label="Close settings"><i data-icon="close"></i></button>
+      </header>
+
+      <div class="field">
+        <span class="field-label">Save recordings to</span>
+        <div class="path-row">
+          <span class="path" id="out-dir"></span>
+          <button type="button" class="btn btn-quiet" id="pick-dir">Change…</button>
+        </div>
+      </div>
+
+      <div class="field field-inline">
+        <span class="field-label">Countdown before recording</span>
+        <div class="segmented segmented-small" role="radiogroup" aria-label="Countdown">
+          <button type="button" role="radio" data-countdown="0">Off</button>
+          <button type="button" role="radio" data-countdown="3">3 s</button>
+          <button type="button" role="radio" data-countdown="5">5 s</button>
+        </div>
+      </div>
+
+      <div class="field field-inline">
+        <label class="field-label" for="cursor-toggle">Show mouse pointer in videos</label>
+        <label class="switch"><input type="checkbox" id="cursor-toggle" /><span aria-hidden="true"></span></label>
+      </div>
+
+      <div class="field">
+        <span class="field-label">FFmpeg</span>
+        <div class="path-row">
+          <span class="path" id="ffmpeg-path"></span>
+          <button type="button" class="btn btn-quiet" id="pick-ffmpeg">Locate…</button>
+          <button type="button" class="btn btn-quiet" id="auto-ffmpeg">Find automatically</button>
+        </div>
+        <span class="field-hint" id="ffmpeg-version"></span>
+      </div>
+
+      <div class="field">
+        <span class="field-label">Keyboard shortcuts</span>
+        <dl class="shortcuts">
+          <dt><kbd>Alt+Shift+R</kbd></dt><dd>Start recording, or stop and save</dd>
+          <dt><kbd>Alt+Shift+P</kbd></dt><dd>Pause or resume</dd>
+          <dt><kbd>Esc</kbd></dt><dd>Cancel while choosing an area or counting down</dd>
+        </dl>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Recording</title>
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/helpers.css" />
+</head>
+<body>
+  <div class="bar-wrap">
+    <div class="bar" id="bar" role="toolbar" aria-label="Recording controls">
+      <div class="bar-grip" data-tauri-drag-region title="Drag to move"><i data-icon="grip"></i></div>
+      <div class="bar-time" aria-live="off">
+        <span class="tally" id="tally" aria-hidden="true"></span>
+        <span id="time">0:00</span>
+      </div>
+      <button class="bar-btn" id="pause" title="Pause (Alt+Shift+P)"><i data-icon="pause"></i><span id="pause-label">Pause</span></button>
+      <button class="bar-btn discard" id="discard" title="Discard this recording" aria-label="Discard"><i data-icon="trash"></i></button>
+      <span class="bar-sep" aria-hidden="true"></span>
+      <button class="bar-btn stop" id="stop" title="Stop and save (Alt+Shift+R)"><i data-icon="stop"></i><span id="stop-label">Stop</span></button>
+    </div>
+  </div>
+  <script type="module" src="js/recbar.js"></script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+/* Tallycast design tokens.
+   Fog-grey studio base, white work surfaces, cobalt for "selected",
+   and broadcast tally red reserved strictly for recording state. */
+
+:root {
+  --fog: #eceff3;
+  --paper: #ffffff;
+  --paper-2: #f6f7f9;
+  --ink: #18212e;
+  --slate: #5b6676;
+  --mist: #8d97a6;
+  --line: #dde2e9;
+  --line-strong: #c9d0da;
+  --cobalt: #2a57de;
+  --cobalt-soft: #e5ecfd;
+  --cobalt-ink: #1d3fa6;
+  --tally: #e23b3e;
+  --tally-soft: #fde9e9;
+  --ok: #1f8a5b;
+
+  --radius-s: 6px;
+  --radius-m: 10px;
+  --radius-l: 14px;
+  --shadow-pop: 0 1px 2px rgba(24, 33, 46, 0.06), 0 8px 24px rgba(24, 33, 46, 0.12);
+
+  --font: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system,
+    BlinkMacSystemFont, "Inter", "Helvetica Neue", sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system,
+    BlinkMacSystemFont, "Inter", sans-serif;
+
+  --t-xs: 11.5px;
+  --t-s: 12.5px;
+  --t-m: 14px;
+  --t-l: 17px;
+  --t-xl: 24px;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --fog: #161a21;
+    --paper: #1e232c;
+    --paper-2: #232933;
+    --ink: #e7ebf1;
+    --slate: #a2acba;
+    --mist: #737e8e;
+    --line: #2d3440;
+    --line-strong: #3a4250;
+    --cobalt: #7096ff;
+    --cobalt-soft: #233056;
+    --cobalt-ink: #a9c0ff;
+    --tally: #ff5b5e;
+    --tally-soft: #3f2226;
+    --ok: #4cc28c;
+    --shadow-pop: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.45);
+    color-scheme: dark;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  font-family: var(--font);
+  font-size: var(--t-m);
+  line-height: 1.45;
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+
+button,
+select,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--cobalt);
+  outline-offset: 2px;
+}
+
+.icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  display: block;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+[hidden] {
+  display: none !important;
+}
