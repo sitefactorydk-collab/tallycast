@@ -64,7 +64,7 @@ pub enum Capture {
 }
 
 /// Bumped whenever `probe` tests something new, so cached results are redone.
-pub const SCHEMA: u32 = 2;
+pub const SCHEMA: u32 = 3;
 
 /// What this PC's FFmpeg can do. Cached on disk per FFmpeg binary and version.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
@@ -244,7 +244,7 @@ pub fn video_args(plan: &Plan, crf: u32, fps: u32) -> Vec<String> {
 /// Runs FFmpeg; `Err` carries the reason (FFmpeg's last error lines, or a timeout).
 fn run(ffmpeg: &Path, args: &[String], timeout: Duration) -> Result<(), String> {
     let mut child = command(ffmpeg)
-        .args(["-hide_banner", "-nostdin", "-loglevel", "error"])
+        .args(["-hide_banner", "-nostdin", "-loglevel", "warning"])
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -275,10 +275,28 @@ fn run(ffmpeg: &Path, args: &[String], timeout: Duration) -> Result<(), String> 
     outcome.map_err(|e| if e.is_empty() { last_lines(&text) } else { e })
 }
 
-/// The last two non-empty lines, joined: usually the actual reason.
+/// FFmpeg's own follow-up messages, which say *that* something failed, not why.
+const GENERIC: [&str; 9] = [
+    "Terminating thread with return code",
+    "Nothing was written into output file",
+    "Task finished with error code",
+    "Error while filtering",
+    "Error sending frames",
+    "Conversion failed",
+    "Error submitting",
+    "Could not open encoder before EOF",
+    "Error while processing the decoded data",
+];
+
+/// The lines that explain a failure: the last few specific ones, or failing that the
+/// last two lines of any kind.
 fn last_lines(text: &str) -> String {
     let lines: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
-    let tail = &lines[lines.len().saturating_sub(2)..];
+    let mut specific: Vec<&str> =
+        lines.iter().copied().filter(|l| !GENERIC.iter().any(|g| l.contains(g))).collect();
+    specific.dedup();
+    let pick = if specific.is_empty() { &lines } else { &specific };
+    let tail = &pick[pick.len().saturating_sub(if specific.is_empty() { 2 } else { 3 })..];
     if tail.is_empty() {
         "failed".into()
     } else {
@@ -286,7 +304,9 @@ fn last_lines(text: &str) -> String {
     }
 }
 
-const PROBE_DDA: &str = "ddagrab=output_idx=0:framerate=30:video_size=320x240";
+/// A realistic size: hardware paths can reject very small GPU surfaces. Every monitor
+/// Tallycast supports is at least this big.
+const PROBE_DDA: &str = "ddagrab=output_idx=0:framerate=30:video_size=1280x720";
 
 fn test_args(input: &[&str], plan: &Plan, frames: u32) -> Vec<String> {
     let mut a: Vec<String> = input.iter().map(|x| x.to_string()).collect();
@@ -390,7 +410,14 @@ mod tests {
     #[test]
     fn last_lines_picks_the_reason() {
         let text = "a\n\nFormat bgra is not supported\nError initializing\n";
-        assert_eq!(last_lines(text), "Format bgra is not supported / Error initializing");
+        assert_eq!(last_lines(text), "a / Format bgra is not supported / Error initializing");
+        let amf = "[h264_amf @ 01] SubmitInput() failed with error 7\n\
+                   [vost#0:0/h264_amf @ 01] Task finished with error code: -1313558101\n\
+                   [vost#0:0/h264_amf @ 01] Terminating thread with return code -1313558101\n\
+                   [out#0/null @ 02] Nothing was written into output file\n";
+        assert_eq!(last_lines(amf), "[h264_amf @ 01] SubmitInput() failed with error 7");
+        let generic = "x\nTerminating thread with return code -22\nNothing was written into output file\n";
+        assert_eq!(last_lines(generic), "x");
         assert_eq!(last_lines(""), "failed");
     }
 
