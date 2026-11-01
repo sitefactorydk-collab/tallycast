@@ -59,7 +59,8 @@ pub fn engines(app: &AppHandle, ffmpeg_bin: &Path, force: bool) -> Engines {
     let mut slot = state.inner().cache.lock().unwrap_or_else(|p| p.into_inner());
     let path = util::path_str(ffmpeg_bin);
     let version = ffmpeg::version(ffmpeg_bin).unwrap_or_default();
-    let fresh = |e: &Engines| e.ffmpeg_path == path && e.ffmpeg_version == version;
+    let fresh =
+        |e: &Engines| e.schema == hwenc::SCHEMA && e.ffmpeg_path == path && e.ffmpeg_version == version;
     if !force {
         if let Some(e) = slot.as_ref().filter(|e| fresh(e)) {
             return e.clone();
@@ -71,9 +72,12 @@ pub fn engines(app: &AppHandle, ffmpeg_bin: &Path, force: bool) -> Engines {
     }
     let e = hwenc::probe(ffmpeg_bin, &version);
     eprintln!(
-        "[tallycast] video engines: hardware encoders {:?}, desktop duplication {}, direct {:?}",
-        e.encoders, e.ddagrab, e.direct
+        "[tallycast] video engines: hardware encoders {:?}, desktop duplication {}, direct {:?}, converted {:?}",
+        e.encoders, e.ddagrab, e.direct, e.converted
     );
+    for note in &e.notes {
+        eprintln!("[tallycast]   not used: {note}");
+    }
     write_disk(app, &e);
     *slot = Some(e.clone());
     e

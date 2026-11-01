@@ -2,15 +2,16 @@
 //!
 //! On Windows the preferred path is Desktop Duplication (`ddagrab`) feeding a GPU
 //! encoder (AMD AMF, NVIDIA NVENC or Intel Quick Sync). When the encoder accepts the
-//! captured GPU textures directly ("direct"), frames never touch system memory. With
-//! older FFmpeg builds (AMF before 8.0 rejects BGRA textures) frames are downloaded
-//! first. Anything that fails falls back to GDI capture and x264 on the processor.
+//! captured GPU textures directly ("direct"), frames never touch system memory. Some
+//! drivers only take NV12 textures; then FFmpeg 8's `scale_d3d11` converts on the GPU
+//! first ("converted"). Otherwise frames are downloaded to system memory first. Anything that fails falls back to GDI capture and x264 on the processor.
 //!
 //! What works is found by running FFmpeg briefly (`probe`), because an encoder being
 //! compiled in says nothing about the graphics card actually present.
 
 use crate::util::command;
 use serde::{Deserialize, Serialize};
+use std::io::Read;
 use std::path::Path;
 use std::process::Stdio;
 use std::thread;
@@ -62,10 +63,14 @@ pub enum Capture {
     Native,
 }
 
+/// Bumped whenever `probe` tests something new, so cached results are redone.
+pub const SCHEMA: u32 = 2;
+
 /// What this PC's FFmpeg can do. Cached on disk per FFmpeg binary and version.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Engines {
+    pub schema: u32,
     pub ffmpeg_path: String,
     pub ffmpeg_version: String,
     /// Hardware encoders that encoded test frames successfully.
@@ -74,6 +79,10 @@ pub struct Engines {
     pub ddagrab: bool,
     /// Hardware encoders that accept Desktop Duplication textures directly.
     pub direct: Vec<Encoder>,
+    /// Hardware encoders that take them after a GPU conversion to NV12.
+    pub converted: Vec<Encoder>,
+    /// Why tests failed (FFmpeg's last error lines), for the log and diagnostics.
+    pub notes: Vec<String>,
 }
 
 /// The pipeline for one recording.
@@ -82,8 +91,10 @@ pub struct Engines {
 pub struct Plan {
     pub capture: Capture,
     pub encoder: Encoder,
-    /// GPU textures go straight into the encoder.
+    /// Frames stay on the GPU from capture to encoder.
     pub direct: bool,
+    /// ...after `scale_d3d11` converts them to NV12 (only with `direct`).
+    pub convert: bool,
     /// `ddagrab` output index of the recorded monitor.
     pub output_idx: u32,
 }
@@ -92,7 +103,7 @@ impl Plan {
     /// The path that works on every PC: GDI (or the native grabber) and x264.
     pub fn safe() -> Self {
         let capture = if cfg!(windows) { Capture::Gdigrab } else { Capture::Native };
-        Plan { capture, encoder: Encoder::X264, direct: false, output_idx: 0 }
+        Plan { capture, encoder: Encoder::X264, direct: false, convert: false, output_idx: 0 }
     }
 
     pub fn is_safe(&self) -> bool {
@@ -105,7 +116,11 @@ impl Plan {
             Capture::Gdigrab => "GDI capture",
             Capture::Native => "screen capture",
         };
-        let direct = if self.direct { ", direct from the GPU" } else { "" };
+        let direct = match (self.direct, self.convert) {
+            (true, false) => ", direct from the GPU",
+            (true, true) => ", converted and encoded on the GPU",
+            _ => "",
+        };
         format!("{capture} + {}{direct}", self.encoder.label())
     }
 }
@@ -123,11 +138,12 @@ pub fn choose(e: &Engines, encoder_pref: &str, capture_pref: &str, output_idx: O
 fn choose_windows(e: &Engines, encoder_pref: &str, capture_pref: &str, output_idx: Option<u32>) -> Plan {
     let dda = e.ddagrab && capture_pref != "gdigrab" && output_idx.is_some();
     let available = |enc: Encoder| enc == Encoder::X264 || e.encoders.contains(&enc);
+    let on_gpu = |enc: &Encoder| e.direct.contains(enc) || e.converted.contains(enc);
     let encoder = match Encoder::from_id(encoder_pref).filter(|enc| available(*enc)) {
         Some(enc) => enc,
         None => {
             // Automatic: an encoder that takes GPU frames directly beats one that doesn't.
-            let direct_first = Encoder::HARDWARE.into_iter().find(|enc| dda && e.direct.contains(enc));
+            let direct_first = Encoder::HARDWARE.into_iter().find(|enc| dda && on_gpu(enc));
             direct_first
                 .or_else(|| Encoder::HARDWARE.into_iter().find(|enc| e.encoders.contains(enc)))
                 .unwrap_or(Encoder::X264)
@@ -136,7 +152,8 @@ fn choose_windows(e: &Engines, encoder_pref: &str, capture_pref: &str, output_id
     Plan {
         capture: if dda { Capture::Ddagrab } else { Capture::Gdigrab },
         encoder,
-        direct: dda && e.direct.contains(&encoder),
+        direct: dda && on_gpu(&encoder),
+        convert: dda && !e.direct.contains(&encoder) && e.converted.contains(&encoder),
         output_idx: output_idx.unwrap_or(0),
     }
 }
@@ -155,7 +172,11 @@ pub fn ddagrab_source(output_idx: u32, fps: u32, cursor: bool, x: i32, y: i32, w
 
 /// Filter to apply to the captured video before encoding, if any.
 pub fn capture_filter(plan: &Plan) -> Option<String> {
-    (plan.capture == Capture::Ddagrab && !plan.direct).then(|| "hwdownload,format=bgra".to_string())
+    match (plan.capture, plan.direct, plan.convert) {
+        (Capture::Ddagrab, false, _) => Some("hwdownload,format=bgra".into()),
+        (Capture::Ddagrab, true, true) => Some("scale_d3d11=format=nv12".into()),
+        _ => None,
+    }
 }
 
 /// Encoder arguments. `crf` is the x264 quality (lower = better); hardware encoders
@@ -193,6 +214,9 @@ pub fn video_args(plan: &Plan, crf: u32, fps: u32) -> Vec<String> {
             q.clone(),
             s("-qp_p"),
             q,
+            // VBAQ only works with bitrate modes; say so instead of letting AMF warn.
+            s("-vbaq"),
+            s("0"),
         ],
         Encoder::Nvenc => {
             vec![s("-c:v"), s("h264_nvenc"), s("-preset"), s("p4"), s("-rc"), s("constqp"), s("-qp"), q]
@@ -217,29 +241,48 @@ pub fn video_args(plan: &Plan, crf: u32, fps: u32) -> Vec<String> {
 
 // ───────────────────────────── probing ─────────────────────────────
 
-/// Runs FFmpeg and reports whether it finished successfully within `timeout`.
-fn runs_ok(ffmpeg: &Path, args: &[String], timeout: Duration) -> bool {
-    let Ok(mut child) = command(ffmpeg)
+/// Runs FFmpeg; `Err` carries the reason (FFmpeg's last error lines, or a timeout).
+fn run(ffmpeg: &Path, args: &[String], timeout: Duration) -> Result<(), String> {
+    let mut child = command(ffmpeg)
         .args(["-hide_banner", "-nostdin", "-loglevel", "error"])
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
-    else {
-        return false;
-    };
+        .map_err(|e| e.to_string())?;
+    let mut stderr = child.stderr.take();
+    let reader = thread::spawn(move || {
+        let mut text = String::new();
+        if let Some(err) = stderr.as_mut() {
+            let _ = err.read_to_string(&mut text);
+        }
+        text
+    });
     let start = Instant::now();
-    loop {
+    let outcome = loop {
         match child.try_wait() {
-            Ok(Some(status)) => return status.success(),
+            Ok(Some(status)) => break if status.success() { Ok(()) } else { Err(String::new()) },
             Ok(None) if start.elapsed() < timeout => thread::sleep(Duration::from_millis(40)),
             _ => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return false;
+                break Err("timed out".to_string());
             }
         }
+    };
+    let text = reader.join().unwrap_or_default();
+    outcome.map_err(|e| if e.is_empty() { last_lines(&text) } else { e })
+}
+
+/// The last two non-empty lines, joined: usually the actual reason.
+fn last_lines(text: &str) -> String {
+    let lines: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let tail = &lines[lines.len().saturating_sub(2)..];
+    if tail.is_empty() {
+        "failed".into()
+    } else {
+        tail.join(" / ")
     }
 }
 
@@ -259,6 +302,7 @@ fn test_args(input: &[&str], plan: &Plan, frames: u32) -> Vec<String> {
 /// Finds out what works on this PC. Takes a few seconds; Windows only.
 pub fn probe(ffmpeg: &Path, version: &str) -> Engines {
     let mut e = Engines {
+        schema: SCHEMA,
         ffmpeg_path: ffmpeg.to_string_lossy().into_owned(),
         ffmpeg_version: version.to_string(),
         ..Engines::default()
@@ -268,33 +312,52 @@ pub fn probe(ffmpeg: &Path, version: &str) -> Engines {
     }
     let timeout = Duration::from_secs(12);
     let synthetic = ["-f", "lavfi", "-i", "color=c=black:s=640x360:r=30"];
-    let sw = |enc| Plan { capture: Capture::Gdigrab, encoder: enc, direct: false, output_idx: 0 };
+    let dda_input = ["-f", "lavfi", "-i", PROBE_DDA];
+    let plan = |capture, encoder, direct, convert| Plan { capture, encoder, direct, convert, output_idx: 0 };
 
     // The three encoders and Desktop Duplication are independent: test them together.
-    let (encoders, ddagrab) = thread::scope(|scope| {
+    let (results, dda) = thread::scope(|scope| {
         let handles: Vec<_> = Encoder::HARDWARE
             .into_iter()
-            .map(|enc| scope.spawn(move || runs_ok(ffmpeg, &test_args(&synthetic, &sw(enc), 10), timeout)))
+            .map(|enc| {
+                let p = plan(Capture::Gdigrab, enc, false, false);
+                scope.spawn(move || run(ffmpeg, &test_args(&synthetic, &p, 10), timeout))
+            })
             .collect();
-        let dda_plan =
-            Plan { capture: Capture::Ddagrab, encoder: Encoder::X264, direct: false, output_idx: 0 };
-        let dda = runs_ok(ffmpeg, &test_args(&["-f", "lavfi", "-i", PROBE_DDA], &dda_plan, 3), timeout);
-        let ok: Vec<Encoder> = Encoder::HARDWARE
+        let dda_plan = plan(Capture::Ddagrab, Encoder::X264, false, false);
+        let dda = run(ffmpeg, &test_args(&dda_input, &dda_plan, 3), timeout);
+        let results: Vec<(Encoder, Result<(), String>)> = Encoder::HARDWARE
             .into_iter()
             .zip(handles)
-            .filter_map(|(enc, h)| h.join().unwrap_or(false).then_some(enc))
+            .map(|(enc, h)| (enc, h.join().unwrap_or_else(|_| Err("panicked".into()))))
             .collect();
-        (ok, dda)
+        (results, dda)
     });
-    e.encoders = encoders;
-    e.ddagrab = ddagrab;
+    for (enc, r) in results {
+        match r {
+            Ok(()) => e.encoders.push(enc),
+            Err(why) => e.notes.push(format!("{}: {why}", enc.id())),
+        }
+    }
+    match dda {
+        Ok(()) => e.ddagrab = true,
+        Err(why) => e.notes.push(format!("ddagrab: {why}")),
+    }
 
     if e.ddagrab {
         // Quick Sync would need its own device mapping; it always takes downloaded frames.
-        for enc in e.encoders.iter().copied().filter(|enc| *enc != Encoder::Qsv) {
-            let plan = Plan { capture: Capture::Ddagrab, encoder: enc, direct: true, output_idx: 0 };
-            if runs_ok(ffmpeg, &test_args(&["-f", "lavfi", "-i", PROBE_DDA], &plan, 5), timeout) {
-                e.direct.push(enc);
+        for enc in e.encoders.clone().into_iter().filter(|enc| *enc != Encoder::Qsv) {
+            let direct = plan(Capture::Ddagrab, enc, true, false);
+            match run(ffmpeg, &test_args(&dda_input, &direct, 5), timeout) {
+                Ok(()) => e.direct.push(enc),
+                Err(why) => {
+                    e.notes.push(format!("{} direct: {why}", enc.id()));
+                    let converted = plan(Capture::Ddagrab, enc, true, true);
+                    match run(ffmpeg, &test_args(&dda_input, &converted, 5), timeout) {
+                        Ok(()) => e.converted.push(enc),
+                        Err(why) => e.notes.push(format!("{} converted: {why}", enc.id())),
+                    }
+                }
             }
         }
     }
@@ -310,6 +373,28 @@ mod tests {
     }
 
     #[test]
+    fn converted_path_uses_scale_d3d11() {
+        use Encoder::*;
+        let e = Engines { encoders: vec![Amf], ddagrab: true, converted: vec![Amf], ..Default::default() };
+        let p = choose_windows(&e, "auto", "auto", Some(0));
+        assert_eq!((p.capture, p.encoder, p.direct, p.convert), (Capture::Ddagrab, Amf, true, true));
+        assert_eq!(capture_filter(&p).as_deref(), Some("scale_d3d11=format=nv12"));
+        assert!(!video_args(&p, 23, 30).contains(&"-pix_fmt".to_string()));
+        assert!(p.describe().ends_with("converted and encoded on the GPU"));
+        // Raw textures win over conversion when both work.
+        let both = Engines { direct: vec![Amf], ..e };
+        let p = choose_windows(&both, "auto", "auto", Some(0));
+        assert_eq!((p.direct, p.convert), (true, false));
+    }
+
+    #[test]
+    fn last_lines_picks_the_reason() {
+        let text = "a\n\nFormat bgra is not supported\nError initializing\n";
+        assert_eq!(last_lines(text), "Format bgra is not supported / Error initializing");
+        assert_eq!(last_lines(""), "failed");
+    }
+
+    #[test]
     fn encoder_ids_round_trip() {
         for e in [Encoder::Amf, Encoder::Nvenc, Encoder::Qsv, Encoder::X264] {
             assert_eq!(Encoder::from_id(e.id()), Some(e));
@@ -319,11 +404,17 @@ mod tests {
 
     #[test]
     fn args_for_each_encoder() {
-        let amf = Plan { capture: Capture::Ddagrab, encoder: Encoder::Amf, direct: true, output_idx: 1 };
+        let amf = Plan {
+            capture: Capture::Ddagrab,
+            encoder: Encoder::Amf,
+            direct: true,
+            convert: false,
+            output_idx: 1,
+        };
         let a = video_args(&amf, 23, 30).join(" ");
         assert_eq!(
             a,
-            "-c:v h264_amf -usage transcoding -quality balanced -rc cqp -qp_i 22 -qp_p 22 -bf 0 -g 60"
+            "-c:v h264_amf -usage transcoding -quality balanced -rc cqp -qp_i 22 -qp_p 22 -vbaq 0 -bf 0 -g 60"
         );
         assert_eq!(capture_filter(&amf), None);
         let amf_dl = Plan { direct: false, ..amf };
