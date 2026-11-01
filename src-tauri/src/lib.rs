@@ -1,10 +1,13 @@
 //! Tallycast — a cross-platform screen recorder built on Tauri.
 
 mod audio;
+mod dxgi;
 mod edit;
 mod editor;
+mod engine;
 mod ffmpeg;
 mod flow;
+mod hwenc;
 mod library;
 mod media;
 mod mediaserver;
@@ -63,6 +66,12 @@ async fn get_settings(app: AppHandle) -> Result<settings::Settings, String> {
 #[tauri::command]
 async fn save_settings(app: AppHandle, settings: settings::Settings) -> Result<(), String> {
     blocking(app, move |app| settings::save(&app, &settings)).await
+}
+
+/// Which video engines work on this PC; `force` probes again.
+#[tauri::command]
+async fn get_engines(app: AppHandle, force: bool) -> Result<engine::EngineView, String> {
+    blocking(app, move |app| engine::view(&app, force)).await
 }
 
 #[tauri::command]
@@ -229,6 +238,7 @@ pub fn run() {
         )
         .manage(flow::AppState::default())
         .manage(editor::EditorState::default())
+        .manage(engine::EngineState::default())
         .setup(|app| {
             for shortcut in [record_shortcut(), pause_shortcut()] {
                 if let Err(e) = app.global_shortcut().register(shortcut) {
@@ -236,12 +246,14 @@ pub fn run() {
                     eprintln!("[tallycast] could not register a global hotkey: {e}");
                 }
             }
+            engine::warm_up(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_environment,
             get_settings,
             save_settings,
+            get_engines,
             pick_folder,
             pick_ffmpeg,
             list_recordings,

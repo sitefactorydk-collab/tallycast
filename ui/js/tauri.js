@@ -33,7 +33,7 @@ const mockSettings = {
   outputDir: null, fps: 30, quality: 'standard', showCursor: true, countdown: 3,
   micEnabled: true, micDevice: null, systemAudio: true,
   webcamEnabled: false, webcamDevice: null, webcamSize: 'm',
-  ffmpegPath: null, lastMode: 'screen', lastMonitor: 0,
+  ffmpegPath: null, lastMode: 'screen', lastMonitor: 0, encoder: 'auto', capture: 'auto',
 };
 
 function mockThumb(hue) {
@@ -121,6 +121,19 @@ function mock(cmd, args) {
         outputDir: 'C:\\Users\\you\\Videos\\Tallycast', recordHotkey: 'Alt+Shift+R', pauseHotkey: 'Alt+Shift+P',
       };
     case 'get_settings': return { ...mockSettings };
+    case 'get_engines':
+      return {
+        supported: true, ffmpegVersion: 'ffmpeg version 8.0-essentials_build-www.gyan.dev',
+        encoders: [
+          { id: 'amf', label: 'AMD graphics (AMF)', available: true },
+          { id: 'nvenc', label: 'NVIDIA graphics (NVENC)', available: false },
+          { id: 'qsv', label: 'Intel graphics (Quick Sync)', available: false },
+          { id: 'x264', label: 'Processor (x264)', available: true },
+        ],
+        ddagrab: true, direct: ['amf'],
+        plan: { capture: 'ddagrab', encoder: 'amf', direct: true, outputIdx: 0 },
+        planText: 'Desktop Duplication + AMD graphics (AMF), direct from the GPU',
+      };
     case 'list_recordings':
       return [
         { id: '1', title: 'Recording 2026-11-01 at 10.42.17', path: 'C:\\Users\\you\\Videos\\Tallycast\\Recording 2026-11-01 at 10.42.17.mp4', createdMs: now - 40 * 60_000, durationSec: 312.4, width: 2560, height: 1440, sizeBytes: 48_200_000, thumbnail: mockThumb(220) },

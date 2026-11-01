@@ -1,6 +1,7 @@
 //! Locating FFmpeg and building its command lines.
 
 use crate::audio::AudioFeed;
+use crate::hwenc;
 use crate::recorder::RecordConfig;
 use crate::settings::Settings;
 use crate::util::{command, path_str};
@@ -92,6 +93,19 @@ fn video_input(cfg: &RecordConfig) -> Vec<String> {
 
     #[cfg(windows)]
     {
+        if cfg.plan.capture == hwenc::Capture::Ddagrab {
+            let m = &cfg.monitor;
+            let src = hwenc::ddagrab_source(
+                cfg.plan.output_idx,
+                cfg.fps,
+                cfg.show_cursor,
+                r.x - m.x,
+                r.y - m.y,
+                r.width,
+                r.height,
+            );
+            return vec![s("-f"), s("lavfi"), s("-i"), src];
+        }
         vec![
             s("-f"),
             s("gdigrab"),
@@ -149,8 +163,12 @@ fn video_input(cfg: &RecordConfig) -> Vec<String> {
     }
 }
 
-/// Video filter applied after grabbing (macOS grabs a whole screen and crops).
+/// Video filter applied after grabbing: macOS grabs a whole screen and crops;
+/// Desktop Duplication may need its GPU frames downloaded for the encoder.
 fn video_filter(cfg: &RecordConfig) -> Option<String> {
+    if let Some(f) = hwenc::capture_filter(&cfg.plan) {
+        return Some(f);
+    }
     if cfg!(target_os = "macos") {
         let r = cfg.rect;
         let m = &cfg.monitor;
@@ -219,18 +237,7 @@ pub fn record_args(cfg: &RecordConfig, feeds: &[AudioFeed], out: &Path) -> Vec<S
         }
     }
 
-    a.extend([
-        s("-c:v"),
-        s("libx264"),
-        s("-preset"),
-        s("veryfast"),
-        s("-crf"),
-        s(cfg.crf),
-        s("-pix_fmt"),
-        s("yuv420p"),
-        s("-g"),
-        s(cfg.fps * 2),
-    ]);
+    a.extend(hwenc::video_args(&cfg.plan, cfg.crf, cfg.fps));
     if !feeds.is_empty() {
         a.extend([s("-c:a"), s("aac"), s("-b:a"), s("192k"), s("-ar"), s(48000)]);
     }

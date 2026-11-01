@@ -30,6 +30,10 @@ pub struct Settings {
     /// "screen" | "area" — used by the global hotkey.
     pub last_mode: String,
     pub last_monitor: usize,
+    /// Video encoder: "auto" | "amf" | "nvenc" | "qsv" | "x264".
+    pub encoder: String,
+    /// Screen capture on Windows: "auto" | "ddagrab" | "gdigrab".
+    pub capture: String,
 }
 
 impl Default for Settings {
@@ -49,6 +53,8 @@ impl Default for Settings {
             ffmpeg_path: None,
             last_mode: "screen".into(),
             last_monitor: 0,
+            encoder: "auto".into(),
+            capture: "auto".into(),
         }
     }
 }

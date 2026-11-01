@@ -800,6 +800,13 @@ h2 {
   justify-content: space-between;
 }
 
+.field-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .field-label {
   font-weight: 600;
   font-size: var(--t-s);

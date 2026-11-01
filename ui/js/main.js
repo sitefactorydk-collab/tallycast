@@ -301,6 +301,86 @@ function wireVideo() {
   });
 }
 
+// ───────────────────────────── video engine ─────────────────────────────
+
+function renderEngines() {
+  const view = state.engines;
+  const supported = state.env?.os === 'windows';
+  $('#encoder-row').hidden = !supported;
+  $('#capture-field').hidden = !supported;
+  if (!supported) return;
+  const sel = $('#encoder-select');
+  const hint = $('#encoder-hint');
+  if (!view) {
+    sel.disabled = true;
+    hint.textContent = 'Checking your graphics card…';
+    $('#engine-status').textContent = 'Checking your graphics card…';
+    return;
+  }
+  const chosen = state.settings.encoder || 'auto';
+  const auto = view.encoders.find((e) => e.id === view.plan.encoder);
+  sel.innerHTML = '';
+  const add = (value, text, disabled = false) => {
+    const o = document.createElement('option');
+    o.value = value;
+    o.textContent = text;
+    o.disabled = disabled;
+    sel.append(o);
+  };
+  add('auto', chosen === 'auto' && auto ? `Automatic – ${auto.label.split(' ')[0]}` : 'Automatic');
+  view.encoders.forEach((e) => add(e.id, e.available ? e.label : `${e.label} – not found`, !e.available));
+  sel.value = view.encoders.some((e) => e.id === chosen && e.available) ? chosen : 'auto';
+  sel.disabled = false;
+  const gpu = view.plan.encoder !== 'x264';
+  hint.textContent = view.plan.direct
+    ? 'Graphics card, captured and encoded on the GPU'
+    : gpu ? 'Graphics card encodes the video' : 'Processor encodes the video';
+  setChecked($('[aria-label="Screen capture"]'), 'data-capture', state.settings.capture || 'auto');
+  const found = view.encoders.filter((e) => e.available && e.id !== 'x264').map((e) => e.label);
+  $('#engine-status').textContent =
+    `Recording uses ${view.planText}. ` +
+    (found.length ? `Found: ${found.join(', ')}.` : 'No graphics-card encoder was found.') +
+    (view.ddagrab ? '' : ' Desktop Duplication is not available.');
+}
+
+async function loadEngines(force = false) {
+  if (state.env?.os !== 'windows') return renderEngines();
+  if (force) {
+    state.engines = null;
+    renderEngines();
+  }
+  try {
+    state.engines = await invoke('get_engines', { force });
+  } catch (e) {
+    state.engines = null;
+    $('#encoder-hint').textContent = errorText(e);
+    return;
+  }
+  renderEngines();
+}
+
+async function saveNow() {
+  clearTimeout(saveTimer);
+  await invoke('save_settings', { settings: state.settings }).catch((e) => toast(errorText(e), 'error'));
+}
+
+function wireEngines() {
+  $('#encoder-select').onchange = async (e) => {
+    state.settings.encoder = e.target.value;
+    await saveNow();
+    loadEngines();
+  };
+  document.querySelectorAll('[data-capture]').forEach((b) => {
+    b.onclick = async () => {
+      state.settings.capture = b.dataset.capture;
+      renderEngines();
+      await saveNow();
+      loadEngines();
+    };
+  });
+  $('#engine-retest').onclick = () => loadEngines(true);
+}
+
 // ───────────────────────────── recording ─────────────────────────────
 
 function renderRecordButton() {
@@ -451,6 +531,7 @@ async function init() {
   wireWebcam();
   wireVideo();
   wireSettings();
+  wireEngines();
   $('#record-btn').onclick = () => startCapture().catch((e) => toast(errorText(e), 'error'));
 
   state.settings = await invoke('get_settings');
@@ -463,6 +544,7 @@ async function init() {
   renderMode();
   renderAudio();
   renderVideo();
+  loadEngines();
   if (state.env.wayland) {
     toast('Recording on Wayland is not supported yet. Log in with an X11 session to record.', 'error');
   }

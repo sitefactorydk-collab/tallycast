@@ -97,6 +97,14 @@
               <option value="high">High – sharper text</option>
             </select>
           </div>
+          <div class="row" id="encoder-row" hidden>
+            <i data-icon="chip" class="row-icon"></i>
+            <div class="row-label">
+              <label for="encoder-select">Encoder</label>
+              <span class="row-hint" id="encoder-hint">Checking your graphics card…</span>
+            </div>
+            <select id="encoder-select" class="select" disabled><option>Checking…</option></select>
+          </div>
         </div>
       </div>
 
@@ -150,6 +158,21 @@
       <div class="field field-inline">
         <label class="field-label" for="cursor-toggle">Show mouse pointer in videos</label>
         <label class="switch"><input type="checkbox" id="cursor-toggle" /><span aria-hidden="true"></span></label>
+      </div>
+
+      <div class="field" id="capture-field" hidden>
+        <div class="field-row">
+          <span class="field-label">Screen capture</span>
+          <div class="segmented segmented-small" role="radiogroup" aria-label="Screen capture">
+            <button type="button" role="radio" data-capture="auto">Automatic</button>
+            <button type="button" role="radio" data-capture="ddagrab">Desktop Duplication</button>
+            <button type="button" role="radio" data-capture="gdigrab">GDI</button>
+          </div>
+        </div>
+        <div class="field-row">
+          <span class="field-hint" id="engine-status"></span>
+          <button type="button" class="btn btn-quiet" id="engine-retest">Test again</button>
+        </div>
       </div>
 
       <div class="field">

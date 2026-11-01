@@ -3,11 +3,12 @@
 //! Everything here blocks (process spawning, device opening, window bookkeeping), so
 //! callers run these functions on a blocking thread, never on the UI thread.
 
+use crate::hwenc::Plan;
 use crate::library::{self, Recording};
 use crate::recorder::{CaptureRect, RecordConfig, Session};
 use crate::settings::{self, Settings};
 use crate::wins::{self, MonitorInfo};
-use crate::{audio, ffmpeg, util};
+use crate::{audio, engine, ffmpeg, util};
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
@@ -263,8 +264,11 @@ fn start_recording(app: &AppHandle) -> Result<(), String> {
         );
     }
 
-    let cfg = RecordConfig {
+    let plan = engine::plan_for(app, &p.ffmpeg, s, &p.monitor);
+    eprintln!("[tallycast] recording with {}", plan.describe());
+    let config = |plan: Plan| RecordConfig {
         ffmpeg: p.ffmpeg.clone(),
+        plan,
         rect,
         monitor: p.monitor.clone(),
         fps: s.fps_clamped(),
@@ -275,7 +279,28 @@ fn start_recording(app: &AppHandle) -> Result<(), String> {
         system_audio: s.system_audio,
         temp_dir: std::env::temp_dir().join(format!("tallycast-{}", util::now_ms())),
     };
-    match Session::start(cfg) {
+    let started = match Session::start(config(plan)) {
+        Err(e) if !plan.is_safe() => {
+            // The graphics card path failed (driver, FFmpeg build, display setup): record
+            // with the processor instead, and don't try that path again this session.
+            eprintln!("[tallycast] {} failed, falling back: {e}", plan.describe());
+            engine::mark_broken(app, plan);
+            let fallback = Session::start(config(Plan::safe()));
+            if fallback.is_ok() {
+                let _ = app.emit(
+                    "capture-warning",
+                    format!(
+                        "Recording with {} did not start, so this recording used the processor \
+                         instead. You can choose the encoder under Video.\n\n{e}",
+                        plan.describe()
+                    ),
+                );
+            }
+            fallback
+        }
+        other => other,
+    };
+    match started {
         Ok(session) => {
             {
                 let mut g = lock(app);

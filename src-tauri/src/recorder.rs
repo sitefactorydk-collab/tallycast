@@ -49,6 +49,8 @@ impl CaptureRect {
 
 pub struct RecordConfig {
     pub ffmpeg: PathBuf,
+    /// Grabber and encoder (see `hwenc`).
+    pub plan: crate::hwenc::Plan,
     pub rect: CaptureRect,
     pub monitor: MonitorInfo,
     pub fps: u32,
