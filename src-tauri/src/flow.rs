@@ -279,27 +279,39 @@ fn start_recording(app: &AppHandle) -> Result<(), String> {
         system_audio: s.system_audio,
         temp_dir: std::env::temp_dir().join(format!("tallycast-{}", util::now_ms())),
     };
-    let started = match Session::start(config(plan)) {
-        Err(e) if !plan.is_safe() => {
-            // The graphics card path failed (driver, FFmpeg build, display setup): record
-            // with the processor instead, and don't try that path again this session.
-            eprintln!("[tallycast] {} failed, falling back: {e}", plan.describe());
-            engine::mark_broken(app, plan);
-            let fallback = Session::start(config(Plan::safe()));
-            if fallback.is_ok() {
-                let _ = app.emit(
-                    "capture-warning",
-                    format!(
-                        "Recording with {} did not start, so this recording used the processor \
-                         instead. You can choose the encoder under Video.\n\n{e}",
-                        plan.describe()
-                    ),
-                );
+    // If the graphics card path fails (driver, FFmpeg build, display setup), step down:
+    // frames via system memory, then the processor. Failed plans are not tried again
+    // this session.
+    let mut attempt = plan;
+    let mut first_error: Option<String> = None;
+    let started = loop {
+        match Session::start(config(attempt)) {
+            Ok(session) => break Ok(session),
+            Err(e) => {
+                eprintln!("[tallycast] {} failed: {e}", attempt.describe());
+                match attempt.fallback() {
+                    Some(next) => {
+                        engine::mark_broken(app, attempt);
+                        first_error.get_or_insert(e);
+                        attempt = next;
+                        eprintln!("[tallycast] trying {}", attempt.describe());
+                    }
+                    None => break Err(e),
+                }
             }
-            fallback
         }
-        other => other,
     };
+    if let (Ok(_), Some(e)) = (&started, &first_error) {
+        let _ = app.emit(
+            "capture-warning",
+            format!(
+                "Recording with {} did not start, so this recording used {} instead. \
+                 You can choose the encoder under Video.\n\n{e}",
+                plan.describe(),
+                attempt.describe()
+            ),
+        );
+    }
     match started {
         Ok(session) => {
             {

@@ -101,12 +101,15 @@ pub fn plan_for(app: &AppHandle, ffmpeg_bin: &Path, s: &Settings, monitor: &Moni
     }
     let e = engines(app, ffmpeg_bin, false);
     let output = dxgi::output_index(monitor.x, monitor.y, monitor.width, monitor.height);
-    let plan = hwenc::choose(&e, &s.encoder, &s.capture, output);
-    if is_broken(app, &plan) {
-        Plan::safe()
-    } else {
-        plan
+    let mut plan = hwenc::choose(&e, &s.encoder, &s.capture, output);
+    // Skip what already failed this session, one step at a time.
+    while is_broken(app, &plan) {
+        match plan.fallback() {
+            Some(next) => plan = next,
+            None => break,
+        }
     }
+    plan
 }
 
 // ───────────────────────────── for the settings UI ─────────────────────────────

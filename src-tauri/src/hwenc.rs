@@ -2,9 +2,13 @@
 //!
 //! On Windows the preferred path is Desktop Duplication (`ddagrab`) feeding a GPU
 //! encoder (AMD AMF, NVIDIA NVENC or Intel Quick Sync). When the encoder accepts the
-//! captured GPU textures directly ("direct"), frames never touch system memory. Some
-//! drivers only take NV12 textures; then FFmpeg 8's `scale_d3d11` converts on the GPU
-//! first ("converted"). Otherwise frames are downloaded to system memory first. Anything that fails falls back to GDI capture and x264 on the processor.
+//! captured GPU textures directly ("direct"), frames never touch system memory.
+//! AMD's AMF reads its input with a shader and rejects textures without
+//! D3D11_BIND_SHADER_RESOURCE (AMF_DIRECTX_FAILED), which is how `ddagrab` creates them;
+//! creating the capture's D3D11 device with `SHADER=1` adds that flag ("shader"), which
+//! needs `ddagrab` in the filter graph instead of as an input. Some drivers only take
+//! NV12 textures; then FFmpeg 8's `scale_d3d11` converts on the GPU first
+//! ("converted"). Otherwise frames are downloaded to system memory first. Anything that fails falls back to GDI capture and x264 on the processor.
 //!
 //! What works is found by running FFmpeg briefly (`probe`), because an encoder being
 //! compiled in says nothing about the graphics card actually present.
@@ -64,7 +68,7 @@ pub enum Capture {
 }
 
 /// Bumped whenever `probe` tests something new, so cached results are redone.
-pub const SCHEMA: u32 = 3;
+pub const SCHEMA: u32 = 4;
 
 /// What this PC's FFmpeg can do. Cached on disk per FFmpeg binary and version.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
@@ -79,6 +83,8 @@ pub struct Engines {
     pub ddagrab: bool,
     /// Hardware encoders that accept Desktop Duplication textures directly.
     pub direct: Vec<Encoder>,
+    /// Hardware encoders that take them when the capture device sets `SHADER=1`.
+    pub shader: Vec<Encoder>,
     /// Hardware encoders that take them after a GPU conversion to NV12.
     pub converted: Vec<Encoder>,
     /// Why tests failed (FFmpeg's last error lines), for the log and diagnostics.
@@ -93,6 +99,8 @@ pub struct Plan {
     pub encoder: Encoder,
     /// Frames stay on the GPU from capture to encoder.
     pub direct: bool,
+    /// ...captured on a `SHADER=1` device, as a filter-graph source (only with `direct`).
+    pub shader: bool,
     /// ...after `scale_d3d11` converts them to NV12 (only with `direct`).
     pub convert: bool,
     /// `ddagrab` output index of the recorded monitor.
@@ -103,11 +111,23 @@ impl Plan {
     /// The path that works on every PC: GDI (or the native grabber) and x264.
     pub fn safe() -> Self {
         let capture = if cfg!(windows) { Capture::Gdigrab } else { Capture::Native };
-        Plan { capture, encoder: Encoder::X264, direct: false, convert: false, output_idx: 0 }
+        Plan { capture, encoder: Encoder::X264, direct: false, shader: false, convert: false, output_idx: 0 }
     }
 
     pub fn is_safe(&self) -> bool {
         *self == Plan::safe()
+    }
+
+    /// What to try if this plan fails to start: keep the capture and encoder but
+    /// download the frames, and after that the safe path.
+    pub fn fallback(&self) -> Option<Plan> {
+        if self.direct {
+            Some(Plan { direct: false, shader: false, convert: false, ..*self })
+        } else if !self.is_safe() {
+            Some(Plan::safe())
+        } else {
+            None
+        }
     }
 
     pub fn describe(&self) -> String {
@@ -138,7 +158,8 @@ pub fn choose(e: &Engines, encoder_pref: &str, capture_pref: &str, output_idx: O
 fn choose_windows(e: &Engines, encoder_pref: &str, capture_pref: &str, output_idx: Option<u32>) -> Plan {
     let dda = e.ddagrab && capture_pref != "gdigrab" && output_idx.is_some();
     let available = |enc: Encoder| enc == Encoder::X264 || e.encoders.contains(&enc);
-    let on_gpu = |enc: &Encoder| e.direct.contains(enc) || e.converted.contains(enc);
+    let on_gpu =
+        |enc: &Encoder| e.direct.contains(enc) || e.shader.contains(enc) || e.converted.contains(enc);
     let encoder = match Encoder::from_id(encoder_pref).filter(|enc| available(*enc)) {
         Some(enc) => enc,
         None => {
@@ -153,7 +174,11 @@ fn choose_windows(e: &Engines, encoder_pref: &str, capture_pref: &str, output_id
         capture: if dda { Capture::Ddagrab } else { Capture::Gdigrab },
         encoder,
         direct: dda && on_gpu(&encoder),
-        convert: dda && !e.direct.contains(&encoder) && e.converted.contains(&encoder),
+        shader: dda && !e.direct.contains(&encoder) && e.shader.contains(&encoder),
+        convert: dda
+            && !e.direct.contains(&encoder)
+            && !e.shader.contains(&encoder)
+            && e.converted.contains(&encoder),
         output_idx: output_idx.unwrap_or(0),
     }
 }
@@ -168,6 +193,19 @@ pub fn ddagrab_source(output_idx: u32, fps: u32, cursor: bool, x: i32, y: i32, w
         "ddagrab=output_idx={output_idx}:framerate={fps}:draw_mouse={}:offset_x={x}:offset_y={y}:video_size={w}x{h}",
         u8::from(cursor)
     )
+}
+
+/// Name of the D3D11 device `-init_hw_device` creates for a `shader` plan.
+const DEVICE: &str = "tcgpu";
+
+/// Global arguments a plan needs before any input: for `shader`, a D3D11 device on
+/// adapter 0 (the one `ddagrab` and `dxgi::output_index` use) whose textures are
+/// shader-readable, handed to the filter graph.
+pub fn device_args(plan: &Plan) -> Vec<String> {
+    if !plan.shader {
+        return Vec::new();
+    }
+    vec![s("-init_hw_device"), format!("d3d11va={DEVICE}:0,SHADER=1"), s("-filter_hw_device"), s(DEVICE)]
 }
 
 /// Filter to apply to the captured video before encoding, if any.
@@ -319,6 +357,21 @@ fn test_args(input: &[&str], plan: &Plan, frames: u32) -> Vec<String> {
     a
 }
 
+/// Like `test_args`, with Desktop Duplication as a filter-graph source.
+fn graph_test_args(plan: &Plan, frames: u32) -> Vec<String> {
+    let mut a = device_args(plan);
+    let mut graph = PROBE_DDA.to_string();
+    if let Some(f) = capture_filter(plan) {
+        graph.push(',');
+        graph.push_str(&f);
+    }
+    graph.push_str("[v]");
+    a.extend([s("-filter_complex"), graph, s("-map"), s("[v]"), s("-frames:v"), s(frames)]);
+    a.extend(video_args(plan, 23, 30));
+    a.extend([s("-f"), s("null"), s("-")]);
+    a
+}
+
 /// Finds out what works on this PC. Takes a few seconds; Windows only.
 pub fn probe(ffmpeg: &Path, version: &str) -> Engines {
     let mut e = Engines {
@@ -333,7 +386,14 @@ pub fn probe(ffmpeg: &Path, version: &str) -> Engines {
     let timeout = Duration::from_secs(12);
     let synthetic = ["-f", "lavfi", "-i", "color=c=black:s=640x360:r=30"];
     let dda_input = ["-f", "lavfi", "-i", PROBE_DDA];
-    let plan = |capture, encoder, direct, convert| Plan { capture, encoder, direct, convert, output_idx: 0 };
+    let plan = |capture, encoder, direct, convert| Plan {
+        capture,
+        encoder,
+        direct,
+        shader: false,
+        convert,
+        output_idx: 0,
+    };
 
     // The three encoders and Desktop Duplication are independent: test them together.
     let (results, dda) = thread::scope(|scope| {
@@ -372,6 +432,14 @@ pub fn probe(ffmpeg: &Path, version: &str) -> Engines {
                 Ok(()) => e.direct.push(enc),
                 Err(why) => {
                     e.notes.push(format!("{} direct: {why}", enc.id()));
+                    let shader = Plan { shader: true, ..direct };
+                    match run(ffmpeg, &graph_test_args(&shader, 5), timeout) {
+                        Ok(()) => {
+                            e.shader.push(enc);
+                            continue;
+                        }
+                        Err(why) => e.notes.push(format!("{} shader: {why}", enc.id())),
+                    }
                     let converted = plan(Capture::Ddagrab, enc, true, true);
                     match run(ffmpeg, &test_args(&dda_input, &converted, 5), timeout) {
                         Ok(()) => e.converted.push(enc),
@@ -408,6 +476,52 @@ mod tests {
     }
 
     #[test]
+    fn shader_device_path_for_amd() {
+        use Encoder::*;
+        // The RX 7800 XT with FFmpeg 9.0.2: raw textures fail, a SHADER=1 device works.
+        let e = Engines {
+            encoders: vec![Amf],
+            ddagrab: true,
+            shader: vec![Amf],
+            converted: vec![Amf],
+            ..Default::default()
+        };
+        let p = choose_windows(&e, "auto", "auto", Some(0));
+        assert_eq!((p.encoder, p.direct, p.shader, p.convert), (Amf, true, true, false));
+        assert_eq!(capture_filter(&p), None);
+        assert_eq!(
+            device_args(&p).join(" "),
+            "-init_hw_device d3d11va=tcgpu:0,SHADER=1 -filter_hw_device tcgpu"
+        );
+        assert!(device_args(&Plan::safe()).is_empty());
+        assert_eq!(
+            graph_test_args(&p, 5)[..8].join(" "),
+            "-init_hw_device d3d11va=tcgpu:0,SHADER=1 -filter_hw_device tcgpu -filter_complex \
+             ddagrab=output_idx=0:framerate=30:video_size=1280x720[v] -map [v]"
+        );
+    }
+
+    #[test]
+    fn fallback_chain_ends_at_the_safe_path() {
+        let gpu = Plan {
+            capture: Capture::Ddagrab,
+            encoder: Encoder::Amf,
+            direct: true,
+            shader: true,
+            convert: false,
+            output_idx: 0,
+        };
+        let step = gpu.fallback().unwrap();
+        assert_eq!(
+            (step.capture, step.encoder, step.direct, step.shader),
+            (Capture::Ddagrab, Encoder::Amf, false, false)
+        );
+        assert_eq!(capture_filter(&step).as_deref(), Some("hwdownload,format=bgra"));
+        assert!(step.fallback().unwrap().is_safe());
+        assert_eq!(Plan::safe().fallback(), None);
+    }
+
+    #[test]
     fn last_lines_picks_the_reason() {
         let text = "a\n\nFormat bgra is not supported\nError initializing\n";
         assert_eq!(last_lines(text), "a / Format bgra is not supported / Error initializing");
@@ -435,6 +549,7 @@ mod tests {
             capture: Capture::Ddagrab,
             encoder: Encoder::Amf,
             direct: true,
+            shader: false,
             convert: false,
             output_idx: 1,
         };

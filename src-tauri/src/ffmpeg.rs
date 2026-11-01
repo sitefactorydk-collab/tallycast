@@ -178,10 +178,9 @@ fn video_filter(cfg: &RecordConfig) -> Option<String> {
     }
 }
 
-pub fn record_args(cfg: &RecordConfig, feeds: &[AudioFeed], out: &Path) -> Vec<String> {
-    let mut a: Vec<String> = vec![s("-hide_banner"), s("-loglevel"), s("warning"), s("-nostats"), s("-y")];
-    a.extend(video_input(cfg));
-
+/// One raw-PCM input per audio feed.
+fn audio_inputs(feeds: &[AudioFeed]) -> Vec<String> {
+    let mut a = Vec::new();
     for f in feeds {
         // The format is fully specified, so skip probing: otherwise FFmpeg spends
         // seconds analysing the live socket and the start of the recording is lost.
@@ -202,6 +201,28 @@ pub fn record_args(cfg: &RecordConfig, feeds: &[AudioFeed], out: &Path) -> Vec<S
             format!("tcp://127.0.0.1:{}", f.port),
         ]);
     }
+    a
+}
+
+/// Mixes audio inputs `first..first + n` into one stereo track labelled `[aout]`.
+fn mix_graph(first: usize, n: usize) -> String {
+    let mut graph = String::new();
+    let mut labels = String::new();
+    for i in first..first + n {
+        graph.push_str(&format!("[{i}:a]aresample=48000,aformat=channel_layouts=stereo[a{i}];"));
+        labels.push_str(&format!("[a{i}]"));
+    }
+    graph.push_str(&format!("{labels}amix=inputs={n}:duration=longest:normalize=0[aout]"));
+    graph
+}
+
+pub fn record_args(cfg: &RecordConfig, feeds: &[AudioFeed], out: &Path) -> Vec<String> {
+    if cfg.plan.shader {
+        return record_args_graph(cfg, feeds, out);
+    }
+    let mut a: Vec<String> = vec![s("-hide_banner"), s("-loglevel"), s("warning"), s("-nostats"), s("-y")];
+    a.extend(video_input(cfg));
+    a.extend(audio_inputs(feeds));
 
     let vf = video_filter(cfg);
     match feeds.len() {
@@ -219,13 +240,7 @@ pub fn record_args(cfg: &RecordConfig, feeds: &[AudioFeed], out: &Path) -> Vec<S
         }
         n => {
             // Mix every audio input into one stereo track.
-            let mut graph = String::new();
-            let mut labels = String::new();
-            for i in 1..=n {
-                graph.push_str(&format!("[{i}:a]aresample=48000,aformat=channel_layouts=stereo[a{i}];"));
-                labels.push_str(&format!("[a{i}]"));
-            }
-            graph.push_str(&format!("{labels}amix=inputs={n}:duration=longest:normalize=0[aout]"));
+            let mut graph = mix_graph(1, n);
             match vf {
                 Some(vf) => {
                     graph = format!("[0:v]{vf}[vout];{graph}");
@@ -235,6 +250,47 @@ pub fn record_args(cfg: &RecordConfig, feeds: &[AudioFeed], out: &Path) -> Vec<S
             }
             a.extend([s("-map"), s("[aout]")]);
         }
+    }
+
+    a.extend(hwenc::video_args(&cfg.plan, cfg.crf, cfg.fps));
+    if !feeds.is_empty() {
+        a.extend([s("-c:a"), s("aac"), s("-b:a"), s("192k"), s("-ar"), s(48000)]);
+    }
+    a.push(path_str(out));
+    a
+}
+
+/// Desktop Duplication as a filter-graph source on a shader-readable GPU device (see
+/// `hwenc::Plan::shader`). Video has no `-i`, so the audio inputs start at index 0.
+fn record_args_graph(cfg: &RecordConfig, feeds: &[AudioFeed], out: &Path) -> Vec<String> {
+    let mut a: Vec<String> = vec![s("-hide_banner"), s("-loglevel"), s("warning"), s("-nostats"), s("-y")];
+    a.extend(hwenc::device_args(&cfg.plan));
+    a.extend(audio_inputs(feeds));
+
+    let (r, m) = (cfg.rect, &cfg.monitor);
+    let mut graph = hwenc::ddagrab_source(
+        cfg.plan.output_idx,
+        cfg.fps,
+        cfg.show_cursor,
+        r.x - m.x,
+        r.y - m.y,
+        r.width,
+        r.height,
+    );
+    if let Some(f) = video_filter(cfg) {
+        graph.push(',');
+        graph.push_str(&f);
+    }
+    graph.push_str("[vout]");
+    if feeds.len() >= 2 {
+        graph.push(';');
+        graph.push_str(&mix_graph(0, feeds.len()));
+    }
+    a.extend([s("-filter_complex"), graph, s("-map"), s("[vout]")]);
+    match feeds.len() {
+        0 => {}
+        1 => a.extend([s("-map"), s("0:a")]),
+        _ => a.extend([s("-map"), s("[aout]")]),
     }
 
     a.extend(hwenc::video_args(&cfg.plan, cfg.crf, cfg.fps));
