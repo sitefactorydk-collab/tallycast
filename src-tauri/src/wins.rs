@@ -20,6 +20,7 @@ pub const RECBAR: &str = "recbar";
 pub const WEBCAM: &str = "webcam";
 pub const FRAME: &str = "frame";
 pub const EDITOR: &str = "editor";
+pub const SHOT: &str = "shot";
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -146,12 +147,13 @@ fn make(app: &AppHandle, s: Spec) -> Result<WebviewWindow, String> {
 }
 
 /// Full-monitor transparent overlay where the user drags out an area.
-pub fn open_overlay(app: &AppHandle, mon: &MonitorInfo) -> Result<(), String> {
+/// `shot` changes the wording from recording to screenshot.
+pub fn open_overlay(app: &AppHandle, mon: &MonitorInfo, shot: bool) -> Result<(), String> {
     make(
         app,
         Spec {
             label: OVERLAY,
-            url: "overlay.html",
+            url: if shot { "overlay.html?shot=1" } else { "overlay.html" },
             title: "Select an area",
             x: mon.x,
             y: mon.y,
@@ -280,8 +282,24 @@ pub fn resize_webcam(app: &AppHandle, size: &str) -> Result<(), String> {
 
 /// The editor: a normal, resizable window. If it is already open, it switches to `id`.
 pub fn open_editor(app: &AppHandle, id: &str) -> Result<(), String> {
-    if let Some(win) = app.get_webview_window(EDITOR) {
-        let _ = app.emit_to(EDITOR, "editor-load", id.to_string());
+    open_tool(app, EDITOR, "editor.html", "Tallycast Editor", "editor-load", id)
+}
+
+/// The screenshot annotation window; switches to `id` if it is already open.
+pub fn open_shot(app: &AppHandle, id: &str) -> Result<(), String> {
+    open_tool(app, SHOT, "shot.html", "Tallycast Annotate", "shot-load", id)
+}
+
+fn open_tool(
+    app: &AppHandle,
+    label: &str,
+    page: &str,
+    title: &str,
+    event: &str,
+    id: &str,
+) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window(label) {
+        let _ = app.emit_to(label, event, id.to_string());
         let _ = win.show();
         let _ = win.unminimize();
         let _ = win.set_focus();
@@ -295,8 +313,8 @@ pub fn open_editor(app: &AppHandle, id: &str) -> Result<(), String> {
         h = f64::min(h, m.size().height as f64 / scale * 0.9);
     }
     let id: String = id.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
-    let win = WebviewWindowBuilder::new(app, EDITOR, WebviewUrl::App(format!("editor.html?id={id}").into()))
-        .title("Tallycast Editor")
+    let win = WebviewWindowBuilder::new(app, label, WebviewUrl::App(format!("{page}?id={id}").into()))
+        .title(title)
         .inner_size(w, h)
         .min_inner_size(900.0, 600.0)
         .decorations(false)
@@ -305,7 +323,7 @@ pub fn open_editor(app: &AppHandle, id: &str) -> Result<(), String> {
         .visible(true)
         .focused(true)
         .build()
-        .map_err(|e| format!("Could not open the editor ({e})."))?;
+        .map_err(|e| format!("Could not open the {label} window ({e})."))?;
     let _ = win.set_focus();
     Ok(())
 }

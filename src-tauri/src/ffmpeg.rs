@@ -2,9 +2,10 @@
 
 use crate::audio::AudioFeed;
 use crate::hwenc;
-use crate::recorder::RecordConfig;
+use crate::recorder::{CaptureRect, RecordConfig};
 use crate::settings::Settings;
 use crate::util::{command, path_str};
+use crate::wins::MonitorInfo;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -87,25 +88,30 @@ fn s<T: ToString>(v: T) -> String {
 
 /// The screen-grab input for the current OS.
 fn video_input(cfg: &RecordConfig) -> Vec<String> {
-    let r = cfg.rect;
-    let fps = s(cfg.fps);
-    let cursor = if cfg.show_cursor { "1" } else { "0" };
+    if cfg.plan.capture == hwenc::Capture::Ddagrab {
+        let (r, m) = (cfg.rect, &cfg.monitor);
+        let src = hwenc::ddagrab_source(
+            cfg.plan.output_idx,
+            cfg.fps,
+            cfg.show_cursor,
+            r.x - m.x,
+            r.y - m.y,
+            r.width,
+            r.height,
+        );
+        return vec![s("-f"), s("lavfi"), s("-i"), src];
+    }
+    grab_input(cfg.rect, &cfg.monitor, cfg.fps, cfg.show_cursor)
+}
+
+/// The platform screen grabber (GDI on Windows) for `r`.
+fn grab_input(r: CaptureRect, monitor: &MonitorInfo, fps: u32, show_cursor: bool) -> Vec<String> {
+    let fps = s(fps);
+    let cursor = if show_cursor { "1" } else { "0" };
 
     #[cfg(windows)]
     {
-        if cfg.plan.capture == hwenc::Capture::Ddagrab {
-            let m = &cfg.monitor;
-            let src = hwenc::ddagrab_source(
-                cfg.plan.output_idx,
-                cfg.fps,
-                cfg.show_cursor,
-                r.x - m.x,
-                r.y - m.y,
-                r.width,
-                r.height,
-            );
-            return vec![s("-f"), s("lavfi"), s("-i"), src];
-        }
+        let _ = monitor;
         vec![
             s("-f"),
             s("gdigrab"),
@@ -140,11 +146,12 @@ fn video_input(cfg: &RecordConfig) -> Vec<String> {
             s("-pixel_format"),
             s("uyvy422"),
             s("-i"),
-            format!("Capture screen {}:none", cfg.monitor.index),
+            format!("Capture screen {}:none", monitor.index),
         ]
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
+        let _ = monitor;
         let display = std::env::var("DISPLAY").unwrap_or_else(|_| ":0".into());
         vec![
             s("-f"),
@@ -169,12 +176,33 @@ fn video_filter(cfg: &RecordConfig) -> Option<String> {
     if let Some(f) = hwenc::capture_filter(&cfg.plan) {
         return Some(f);
     }
-    if cfg!(target_os = "macos") {
-        let r = cfg.rect;
-        let m = &cfg.monitor;
-        Some(format!("crop={}:{}:{}:{}", r.width, r.height, r.x - m.x, r.y - m.y))
+    grab_crop(cfg.rect, &cfg.monitor)
+}
+
+/// macOS grabs the whole screen; crop it to `r`.
+fn grab_crop(r: CaptureRect, m: &MonitorInfo) -> Option<String> {
+    cfg!(target_os = "macos").then(|| format!("crop={}:{}:{}:{}", r.width, r.height, r.x - m.x, r.y - m.y))
+}
+
+/// Grabs one frame of `r` as an opaque PNG, without the mouse pointer.
+pub fn screenshot(ffmpeg: &Path, r: CaptureRect, monitor: &MonitorInfo, out: &Path) -> Result<(), String> {
+    let mut a: Vec<String> = vec![s("-hide_banner"), s("-loglevel"), s("error"), s("-nostdin"), s("-y")];
+    a.extend(grab_input(r, monitor, 30, false));
+    a.extend([s("-frames:v"), s(1)]);
+    if let Some(crop) = grab_crop(r, monitor) {
+        a.extend([s("-vf"), crop]);
+    }
+    // GDI leaves the alpha channel undefined; rgb24 keeps the PNG opaque.
+    a.extend([s("-pix_fmt"), s("rgb24"), s("-update"), s(1), path_str(out)]);
+    let output = command(ffmpeg)
+        .args(&a)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("Could not run FFmpeg ({e})."))?;
+    if output.status.success() && out.exists() {
+        Ok(())
     } else {
-        None
+        Err(format!("The screenshot failed.\n\n{}", String::from_utf8_lossy(&output.stderr).trim()))
     }
 }
 

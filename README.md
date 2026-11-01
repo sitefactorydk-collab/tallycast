@@ -3,6 +3,7 @@
 A screen recorder in the spirit of ScreenPal, built with Rust and Tauri 2.
 Pick a display or drag out an area, record with microphone, computer sound and a
 webcam bubble, pause and resume, and get an MP4. Then trim and cut it in the editor.
+Take screenshots and mark them up with arrows, boxes, highlights, text and blur.
 
 Built for Windows, macOS and Linux, with Windows 11 as the first tested target.
 
@@ -21,8 +22,14 @@ Built for Windows, macOS and Linux, with Windows 11 as the first tested target.
   NVIDIA (NVENC) or Intel (Quick Sync) with Desktop Duplication capture; Tallycast then
   tests what works on your PC, checks the test recordings' picture, and falls back to
   the processor by itself if the graphics card path fails.
+- **Screenshots with annotations.** *Screenshot* (or `Alt+Shift+S` from anywhere) grabs
+  the whole display or an area you drag out and opens it in *Annotate*: arrows, boxes,
+  highlights, text and blur, in six colours and three sizes, with select/move/delete and
+  undo. *Save* writes the PNG next to your videos; *Copy* puts it on the clipboard. The
+  untouched capture is kept, so a screenshot can be reopened and its marks changed later.
+  Blur replaces the pixels in the saved PNG.
 - **Global hotkeys.** `Alt+Shift+R` starts with your last choice or stops and saves.
-  `Alt+Shift+P` pauses and resumes.
+  `Alt+Shift+P` pauses and resumes. `Alt+Shift+S` takes a screenshot of an area.
 - **Library.** Finished recordings with thumbnails, length, size; trim and cut, play,
   show in folder, or delete.
 - **Trim and cut editor.** A filmstrip and waveform timeline. Drag the blue brackets
@@ -133,6 +140,7 @@ ui/                     Front end (no bundler; Tauri serves this folder)
   webcam.html           Webcam bubble (included in capture)
   frame.html            Click-through outline around a recorded area
   editor.html           Trim-and-cut editor (js/editor.js, css/editor.css)
+  shot.html             Screenshot annotation (js/shot.js, css/shot.css)
   js/tauri.js           invoke/listen wrapper with browser mocks
 src-tauri/src/
   lib.rs                Tauri commands, plugins, global hotkeys
@@ -146,6 +154,7 @@ src-tauri/src/
   wins.rs               Creating and placing the helper windows
   library.rs            Saved recordings and thumbnails
   editor.rs             Editor window commands: load, filmstrip, waveform, export
+  shot.rs               Screenshots: grab, keep original + marks, save annotated PNG
   edit.rs               Edit model (in/out/cuts) and the smart-cut / re-encode export
   media.rs              Reading recordings: stream info, frame index, waveform, frames
   mediaserver.rs        Localhost range server that streams a recording to the player

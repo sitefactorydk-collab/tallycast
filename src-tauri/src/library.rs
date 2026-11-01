@@ -18,6 +18,13 @@ pub struct Recording {
     pub height: u32,
     #[serde(default)]
     pub size_bytes: u64,
+    /// "video" or "image" (screenshots).
+    #[serde(default = "video_kind")]
+    pub kind: String,
+}
+
+fn video_kind() -> String {
+    "video".into()
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -106,6 +113,17 @@ pub fn delete(app: &AppHandle, id: &str) -> Result<(), String> {
         let _ = fs::remove_file(t);
     }
     crate::editor::forget(app, id);
+    crate::shot::forget(app, id);
+    save(app, &items)
+}
+
+/// Updates an existing entry (same id), e.g. after a screenshot was annotated.
+pub fn update(app: &AppHandle, rec: Recording) -> Result<(), String> {
+    let mut items = load(app);
+    match items.iter_mut().find(|r| r.id == rec.id) {
+        Some(slot) => *slot = rec,
+        None => items.push(rec),
+    }
     save(app, &items)
 }
 

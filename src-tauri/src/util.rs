@@ -60,6 +60,42 @@ pub fn base64(bytes: &[u8]) -> String {
     out
 }
 
+/// Decodes standard base64 (RFC 4648, padding optional, whitespace ignored).
+pub fn base64_decode(text: &str) -> Result<Vec<u8>, String> {
+    fn value(c: u8) -> Option<u32> {
+        Some(match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => return None,
+        } as u32)
+    }
+    // Accept a data URL too.
+    let body = text.split_once(";base64,").map(|(_, b)| b).unwrap_or(text);
+    let mut out = Vec::with_capacity(body.len() / 4 * 3);
+    let mut acc = 0u32;
+    let mut bits = 0u32;
+    for &c in body.as_bytes() {
+        if c == b'=' {
+            break;
+        }
+        if c.is_ascii_whitespace() {
+            continue;
+        }
+        let v = value(c).ok_or_else(|| format!("Invalid base64 character {:?}.", c as char))?;
+        acc = (acc << 6) | v;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+            acc &= (1 << bits) - 1;
+        }
+    }
+    Ok(out)
+}
+
 /// Opens a file or folder with the system's default application.
 pub fn open_path(path: &Path) -> Result<(), String> {
     if !path.exists() {
@@ -127,5 +163,15 @@ mod tests {
         assert_eq!(base64(b"foob"), "Zm9vYg==");
         assert_eq!(base64(b"fooba"), "Zm9vYmE=");
         assert_eq!(base64(b"foobar"), "Zm9vYmFy");
+    }
+
+    #[test]
+    fn base64_round_trips() {
+        for n in 0..64usize {
+            let data: Vec<u8> = (0..n).map(|i| (i * 37 + 11) as u8).collect();
+            assert_eq!(base64_decode(&base64(&data)).unwrap(), data);
+        }
+        assert_eq!(base64_decode("data:image/png;base64,Zm9v\nYmE=").unwrap(), b"fooba");
+        assert!(base64_decode("Zm9v!").is_err());
     }
 }

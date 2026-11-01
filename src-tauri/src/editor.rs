@@ -35,6 +35,11 @@ fn media_server(app: &AppHandle) -> Result<Arc<MediaServer>, String> {
     Ok(server)
 }
 
+/// A localhost URL the web views can load `path` from (with byte ranges and CORS).
+pub fn media_url(app: &AppHandle, path: &Path) -> Result<String, String> {
+    Ok(media_server(app)?.url_for(path))
+}
+
 fn ffmpeg_path(app: &AppHandle) -> Result<PathBuf, String> {
     ffmpeg::find(&settings::load(app))
         .ok_or_else(|| "FFmpeg was not found. Install it, then try again.".into())
@@ -281,6 +286,7 @@ fn run_export(
         width: info.width,
         height: info.height,
         size_bytes: fs::metadata(&out).map(|m| m.len()).unwrap_or(0),
+        kind: "video".into(),
     };
     if let Ok(thumb) = library::thumb_path(app, &new.id) {
         ffmpeg::thumbnail(&ff, &out, &thumb);

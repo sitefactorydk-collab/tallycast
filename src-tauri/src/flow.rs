@@ -18,6 +18,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 pub const RECORD_HOTKEY: &str = "Alt+Shift+R";
 pub const PAUSE_HOTKEY: &str = "Alt+Shift+P";
+pub const SHOT_HOTKEY: &str = "Alt+Shift+S";
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Phase {
@@ -46,6 +47,8 @@ struct Pending {
     monitor: MonitorInfo,
     rect: Option<CaptureRect>,
     area: bool,
+    /// A screenshot rather than a recording.
+    shot: bool,
     settings: Settings,
     ffmpeg: PathBuf,
 }
@@ -83,6 +86,7 @@ pub struct Environment {
     pub output_dir: String,
     pub record_hotkey: String,
     pub pause_hotkey: String,
+    pub shot_hotkey: String,
 }
 
 pub fn environment(app: &AppHandle) -> Result<Environment, String> {
@@ -103,6 +107,7 @@ pub fn environment(app: &AppHandle) -> Result<Environment, String> {
         output_dir: util::path_str(&settings::output_dir(app, &s)),
         record_hotkey: RECORD_HOTKEY.into(),
         pause_hotkey: PAUSE_HOTKEY.into(),
+        shot_hotkey: SHOT_HOTKEY.into(),
     })
 }
 
@@ -137,6 +142,15 @@ pub fn status(app: &AppHandle) -> Status {
 
 /// Starts a capture. `mode` is "screen" (whole monitor) or "area" (drag to select).
 pub fn begin_capture(app: &AppHandle, mode: &str, monitor: usize) -> Result<(), String> {
+    begin(app, mode, monitor, false)
+}
+
+/// Takes a screenshot of the whole monitor, or of an area the user drags out.
+pub fn begin_screenshot(app: &AppHandle, mode: &str, monitor: usize) -> Result<(), String> {
+    begin(app, mode, monitor, true)
+}
+
+fn begin(app: &AppHandle, mode: &str, monitor: usize, shot: bool) -> Result<(), String> {
     let mut s = settings::load(app);
     let ff = ffmpeg::find(&s).ok_or("FFmpeg was not found. Install it, then try again.")?;
     if cfg!(target_os = "linux")
@@ -159,18 +173,27 @@ pub fn begin_capture(app: &AppHandle, mode: &str, monitor: usize) -> Result<(), 
             return Err("A recording is already in progress.".into());
         }
         g.phase = if area { Phase::Selecting } else { Phase::Countdown };
-        g.pending = Some(Pending { monitor: mon.clone(), rect: None, area, settings: s.clone(), ffmpeg: ff });
+        g.pending =
+            Some(Pending { monitor: mon.clone(), rect: None, area, shot, settings: s.clone(), ffmpeg: ff });
     }
 
-    s.last_mode = if area { "area".into() } else { "screen".into() };
+    // Screenshots don't change what the record hotkey does next.
+    if !shot {
+        s.last_mode = if area { "area".into() } else { "screen".into() };
+    }
     s.last_monitor = mon.index;
     let _ = settings::save(app, &s);
 
     wins::hide_main(app);
     thread::sleep(Duration::from_millis(250)); // let the main window disappear
 
-    let result =
-        if area { wins::open_overlay(app, &mon) } else { proceed(app, CaptureRect::from_monitor(&mon)) };
+    let result = if area {
+        wins::open_overlay(app, &mon, shot)
+    } else if shot {
+        shoot(app, CaptureRect::from_monitor(&mon))
+    } else {
+        proceed(app, CaptureRect::from_monitor(&mon))
+    };
     if let Err(e) = &result {
         abort(app, e);
     }
@@ -179,21 +202,38 @@ pub fn begin_capture(app: &AppHandle, mode: &str, monitor: usize) -> Result<(), 
 
 /// Called by the overlay with a rectangle relative to the monitor, in physical pixels.
 pub fn region_selected(app: &AppHandle, x: i32, y: i32, width: u32, height: u32) -> Result<(), String> {
-    let mon = {
+    let (mon, shot) = {
         let g = lock(app);
         if g.phase != Phase::Selecting {
             return Err("No area selection is in progress.".into());
         }
-        g.pending.as_ref().map(|p| p.monitor.clone()).ok_or("No capture is pending.")?
+        g.pending.as_ref().map(|p| (p.monitor.clone(), p.shot)).ok_or("No capture is pending.")?
     };
     wins::close(app, wins::OVERLAY);
     thread::sleep(Duration::from_millis(120));
     let rect = CaptureRect::within_monitor(&mon, x, y, width, height);
-    let result = proceed(app, rect);
+    let result = if shot { shoot(app, rect) } else { proceed(app, rect) };
     if let Err(e) = &result {
         abort(app, e);
     }
     result
+}
+
+/// Grabs the still, then opens it for annotation.
+fn shoot(app: &AppHandle, rect: CaptureRect) -> Result<(), String> {
+    let p = {
+        let mut g = lock(app);
+        g.phase = Phase::Saving;
+        g.pending.clone()
+    }
+    .ok_or("No capture is pending.")?;
+    // Let the overlay and main window finish disappearing.
+    thread::sleep(Duration::from_millis(180));
+    let result = crate::shot::take(app, &p.ffmpeg, rect, &p.monitor, &p.settings);
+    reset(app);
+    wins::show_main(app);
+    let rec = result?;
+    wins::open_shot(app, &rec.id)
 }
 
 /// After the area is known: show helpers, then count down (or start right away).
@@ -384,6 +424,7 @@ pub fn stop_recording(app: &AppHandle) -> Result<(), String> {
                 width: rect.width,
                 height: rect.height,
                 size_bytes: std::fs::metadata(&out).map(|m| m.len()).unwrap_or(0),
+                kind: "video".into(),
             };
             if let Ok(thumb) = library::thumb_path(app, &rec.id) {
                 ffmpeg::thumbnail(&pending.ffmpeg, &out, &thumb);
@@ -439,6 +480,15 @@ pub fn report(app: &AppHandle, result: Result<(), String>) {
         wins::show_main(app);
         let _ = app.emit("capture-error", e);
     }
+}
+
+/// Global hotkey: drag out an area to screenshot on the last-used display.
+pub fn hotkey_screenshot(app: &AppHandle) {
+    if lock(app).phase != Phase::Idle {
+        return;
+    }
+    let s = settings::load(app);
+    report(app, begin_screenshot(app, "area", s.last_monitor));
 }
 
 /// Global hotkey: start with the last-used source, or stop if recording.

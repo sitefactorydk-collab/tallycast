@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tallycast Annotate</title>
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/editor.css" />
+  <link rel="stylesheet" href="css/shot.css" />
+</head>
+<body class="editor shot">
+  <header class="titlebar" data-tauri-drag-region>
+    <div class="brand" data-tauri-drag-region>
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name" data-tauri-drag-region>Annotate</span>
+      <span class="ed-title" id="title" data-tauri-drag-region></span>
+    </div>
+    <div class="titlebar-actions">
+      <button class="btn btn-quiet tb-action" id="btn-copy" title="Copy the image (Ctrl+C)"><i data-icon="copy"></i>Copy</button>
+      <button class="btn btn-primary tb-action" id="btn-save" title="Save (Ctrl+S)"><i data-icon="check"></i>Save</button>
+      <span class="tb-sep" aria-hidden="true"></span>
+      <button class="tb-btn" id="btn-min" title="Minimize" aria-label="Minimize"><i data-icon="minimize"></i></button>
+      <button class="tb-btn" id="btn-max" title="Maximize" aria-label="Maximize"><i data-icon="maximize"></i></button>
+      <button class="tb-btn tb-close" id="btn-close" title="Close (saves your changes)" aria-label="Close"><i data-icon="close"></i></button>
+    </div>
+  </header>
+
+  <div class="toolbar" role="toolbar" aria-label="Annotation tools">
+    <div class="tool-group" role="radiogroup" aria-label="Tool" id="tools">
+      <button role="radio" data-tool="select" title="Select and move (V)"><i data-icon="pointer"></i><span>Select</span></button>
+      <button role="radio" data-tool="arrow" title="Arrow (A)"><i data-icon="arrow"></i><span>Arrow</span></button>
+      <button role="radio" data-tool="box" title="Box (R)"><i data-icon="box"></i><span>Box</span></button>
+      <button role="radio" data-tool="highlight" title="Highlight (H)"><i data-icon="highlight"></i><span>Highlight</span></button>
+      <button role="radio" data-tool="text" title="Text (T)"><i data-icon="text"></i><span>Text</span></button>
+      <button role="radio" data-tool="blur" title="Blur (B)"><i data-icon="blur"></i><span>Blur</span></button>
+    </div>
+    <span class="tool-sep" aria-hidden="true"></span>
+    <div class="swatches" role="radiogroup" aria-label="Colour" id="swatches"></div>
+    <span class="tool-sep" aria-hidden="true"></span>
+    <div class="tool-group sizes" role="radiogroup" aria-label="Size" id="sizes">
+      <button role="radio" data-size="s" title="Thin (1)"><span class="dot s"></span></button>
+      <button role="radio" data-size="m" title="Medium (2)"><span class="dot m"></span></button>
+      <button role="radio" data-size="l" title="Thick (3)"><span class="dot l"></span></button>
+    </div>
+    <span class="tool-sep" aria-hidden="true"></span>
+    <button class="icon-btn" id="undo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><i data-icon="undo"></i></button>
+    <button class="icon-btn" id="redo" title="Redo (Ctrl+Y)" aria-label="Redo" disabled><i data-icon="redo"></i></button>
+    <button class="icon-btn danger" id="delete" title="Delete the selected mark (Delete)" aria-label="Delete the selected mark" disabled><i data-icon="trash"></i></button>
+  </div>
+
+  <main class="canvas-stage" id="stage">
+    <canvas id="canvas"></canvas>
+    <textarea class="text-input" id="text-input" rows="1" spellcheck="false" hidden></textarea>
+    <div class="stage-msg" id="stage-msg" hidden></div>
+  </main>
+
+  <footer class="statusbar">
+    <span class="tabular" id="status-size"></span>
+    <span id="status-hint"></span>
+    <span class="status-state" id="status-state"></span>
+  </footer>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <script type="module" src="js/shot.js"></script>
+</body>
+</html>

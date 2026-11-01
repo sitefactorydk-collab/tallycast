@@ -34,6 +34,15 @@ const paths = {
   export: '<path d="M12 14.5V4M7.8 8.2 12 4l4.2 4.2"/><path d="M5 13v4.5A2.5 2.5 0 0 0 7.5 20h9a2.5 2.5 0 0 0 2.5-2.5V13"/>',
   restore: '<path d="M4.8 12a7.2 7.2 0 1 0 2.1-5.1"/><path d="M4.5 4.2v4.3h4.3"/>',
   chip: '<rect x="6.5" y="6.5" width="11" height="11" rx="2"/><path d="M10 10h4v4h-4zM9.5 3.5v3M14.5 3.5v3M9.5 17.5v3M14.5 17.5v3M3.5 9.5h3M3.5 14.5h3M17.5 9.5h3M17.5 14.5h3"/>',
+  copy: '<rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/>',
+  pointer: '<path d="M6 4.5 18 11l-5.6 1.6L9.8 18z"/><path d="m12.6 12.8 4.4 5"/>',
+  arrow: '<path d="M5 19 18.5 5.5"/><path d="M10 5.5h8.5V14"/>',
+  box: '<rect x="4.5" y="6" width="15" height="12" rx="2"/>',
+  highlight: '<path d="m13.5 5.5 5 5-7.5 7.5H6v-5z"/><path d="M4 20.5h16"/>',
+  text: '<path d="M5.5 7V5.5h13V7M12 5.5v13M9.5 18.5h5"/>',
+  blur: '<rect x="4.5" y="4.5" width="15" height="15" rx="2"/><path d="M4.5 9.5h15M4.5 14.5h15M9.5 4.5v15M14.5 4.5v15"/>',
+  shot: '<path d="M4 8.5A2 2 0 0 1 6 6.5h2l1.5-2h5l1.5 2h2a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.5"/>',
+  annotate: '<path d="M14.5 5.5 18.5 9.5 9 19H5v-4z"/><path d="M12.5 7.5l4 4"/>',
   grip: '<circle cx="9" cy="7" r=".9"/><circle cx="15" cy="7" r=".9"/><circle cx="9" cy="12" r=".9"/><circle cx="15" cy="12" r=".9"/><circle cx="9" cy="17" r=".9"/><circle cx="15" cy="17" r=".9"/>',
 };
 

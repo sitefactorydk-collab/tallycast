@@ -392,6 +392,7 @@ function wireEngines() {
 function renderRecordButton() {
   const ok = Boolean(state.env?.ffmpegPath) && !state.env?.wayland;
   $('#record-btn').disabled = !ok;
+  $('#shot-btn').disabled = !ok;
   $('#ffmpeg-banner').hidden = Boolean(state.env?.ffmpegPath);
 }
 
@@ -401,6 +402,12 @@ async function startCapture() {
   clearTimeout(saveTimer);
   await invoke('save_settings', { settings: state.settings }).catch(() => {});
   await invoke('begin_capture', { mode: state.mode, monitor: state.monitor });
+}
+
+async function startScreenshot() {
+  clearTimeout(saveTimer);
+  await invoke('save_settings', { settings: state.settings }).catch(() => {});
+  await invoke('begin_screenshot', { mode: state.mode, monitor: state.monitor });
 }
 
 // ───────────────────────────── library ─────────────────────────────
@@ -413,13 +420,14 @@ function renderLibrary(newId = null) {
   list.hidden = recs.length === 0;
   list.innerHTML = '';
   recs.forEach((r) => {
+    const image = r.kind === 'image';
     const li = document.createElement('li');
-    li.className = `rec${r.id === newId ? ' is-new' : ''}`;
+    li.className = `rec${r.id === newId ? ' is-new' : ''}${image ? ' is-image' : ''}`;
     li.innerHTML = `
-      <button class="thumb" aria-label="Play ${escapeHtml(r.title)}">
-        ${r.thumbnail ? `<img src="${r.thumbnail}" alt="" draggable="false" />` : `<span class="thumb-empty">${icon('film')}</span>`}
-        <span class="thumb-play">${icon('play')}</span>
-        <span class="thumb-time tabular">${formatDuration(r.durationSec)}</span>
+      <button class="thumb" aria-label="${image ? 'Annotate' : 'Play'} ${escapeHtml(r.title)}">
+        ${r.thumbnail ? `<img src="${r.thumbnail}" alt="" draggable="false" />` : `<span class="thumb-empty">${icon(image ? 'shot' : 'film')}</span>`}
+        <span class="thumb-play">${icon(image ? 'annotate' : 'play')}</span>
+        <span class="thumb-time tabular">${image ? 'PNG' : formatDuration(r.durationSec)}</span>
       </button>
       <div class="rec-info">
         <p class="rec-title" title="${escapeHtml(r.path)}">${escapeHtml(r.title)}</p>
@@ -430,23 +438,27 @@ function renderLibrary(newId = null) {
         </p>
       </div>
       <div class="rec-actions">
-        <button class="icon-btn" data-act="edit" title="Trim and cut" aria-label="Trim and cut">${icon('scissors')}</button>
-        <button class="icon-btn" data-act="open" title="Play" aria-label="Play">${icon('play')}</button>
+        ${image
+          ? `<button class="icon-btn" data-act="edit" title="Annotate" aria-label="Annotate">${icon('annotate')}</button>
+        <button class="icon-btn" data-act="open" title="Open" aria-label="Open">${icon('reveal')}</button>`
+          : `<button class="icon-btn" data-act="edit" title="Trim and cut" aria-label="Trim and cut">${icon('scissors')}</button>
+        <button class="icon-btn" data-act="open" title="Play" aria-label="Play">${icon('play')}</button>`}
         <button class="icon-btn" data-act="reveal" title="Show in folder" aria-label="Show in folder">${icon('reveal')}</button>
         <button class="icon-btn danger" data-act="delete" title="Delete" aria-label="Delete">${icon('trash')}</button>
       </div>`;
     const run = (cmd) => invoke(cmd, { id: r.id }).catch((e) => toast(errorText(e), 'error'));
-    li.querySelector('.thumb').onclick = () => run('open_recording');
+    li.querySelector('.thumb').onclick = () => run(image ? 'open_shot' : 'open_recording');
     li.querySelector('[data-act="open"]').onclick = () => run('open_recording');
-    li.querySelector('[data-act="edit"]').onclick = () => run('open_editor');
+    li.querySelector('[data-act="edit"]').onclick = () => run(image ? 'open_shot' : 'open_editor');
     li.querySelector('[data-act="reveal"]').onclick = () => run('reveal_recording');
     const del = li.querySelector('[data-act="delete"]');
     del.onclick = async () => {
       // Two-step delete: the first click arms the button for a few seconds.
       if (!del.classList.contains('armed')) {
         del.classList.add('armed');
-        del.title = 'Click again to delete the video file';
-        del.setAttribute('aria-label', 'Click again to delete the video file');
+        const what = image ? 'Click again to delete the image file' : 'Click again to delete the video file';
+        del.title = what;
+        del.setAttribute('aria-label', what);
         setTimeout(() => { del.classList.remove('armed'); del.title = 'Delete'; del.setAttribute('aria-label', 'Delete'); }, 3000);
         return;
       }
@@ -539,6 +551,7 @@ async function init() {
   wireSettings();
   wireEngines();
   $('#record-btn').onclick = () => startCapture().catch((e) => toast(errorText(e), 'error'));
+  $('#shot-btn').onclick = () => startScreenshot().catch((e) => toast(errorText(e), 'error'));
 
   state.settings = await invoke('get_settings');
   state.mode = state.settings.lastMode === 'area' ? 'area' : 'screen';
@@ -547,6 +560,7 @@ async function init() {
   await refreshEnvironment();
   $('#hotkey-record').textContent = state.env.recordHotkey;
   $('#hotkey-pause').textContent = state.env.pauseHotkey;
+  $('#hotkey-shot').textContent = state.env.shotHotkey || 'Alt+Shift+S';
   renderMode();
   renderAudio();
   renderVideo();
@@ -558,6 +572,15 @@ async function init() {
   if (state.settings.webcamEnabled) setWebcam(true);
 
   await listen('recording-saved', (rec) => {
+    const known = state.recordings.some((r) => r.id === rec.id);
+    if (rec.kind === 'image') {
+      // Screenshots open straight in Annotate and save often there: update quietly.
+      state.recordings = known
+        ? state.recordings.map((r) => (r.id === rec.id ? rec : r))
+        : [rec, ...state.recordings];
+      renderLibrary(known ? null : rec.id);
+      return;
+    }
     state.recordings = [rec, ...state.recordings.filter((r) => r.id !== rec.id)];
     renderLibrary(rec.id);
     // A fresh recording offers the editor; an exported edit offers its folder.

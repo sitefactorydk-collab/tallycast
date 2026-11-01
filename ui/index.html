@@ -109,11 +109,14 @@
       </div>
 
       <div class="record-dock">
-        <button class="record-btn" id="record-btn">
-          <span class="record-dot" aria-hidden="true"></span>
-          <span id="record-label">Record full screen</span>
-        </button>
-        <p class="record-hint"><kbd id="hotkey-record">Alt+Shift+R</kbd> starts and stops from anywhere. <kbd id="hotkey-pause">Alt+Shift+P</kbd> pauses.</p>
+        <div class="dock-row">
+          <button class="record-btn" id="record-btn">
+            <span class="record-dot" aria-hidden="true"></span>
+            <span id="record-label">Record full screen</span>
+          </button>
+          <button class="shot-btn" id="shot-btn" title="Screenshot (Alt+Shift+S)"><i data-icon="shot"></i><span>Screenshot</span></button>
+        </div>
+        <p class="record-hint"><kbd id="hotkey-record">Alt+Shift+R</kbd> record · <kbd id="hotkey-pause">Alt+Shift+P</kbd> pause · <kbd id="hotkey-shot">Alt+Shift+S</kbd> screenshot. Works from anywhere.</p>
       </div>
     </section>
 
@@ -190,6 +193,7 @@
         <dl class="shortcuts">
           <dt><kbd>Alt+Shift+R</kbd></dt><dd>Start recording, or stop and save</dd>
           <dt><kbd>Alt+Shift+P</kbd></dt><dd>Pause or resume</dd>
+          <dt><kbd>Alt+Shift+S</kbd></dt><dd>Screenshot: drag out an area, then annotate it</dd>
           <dt><kbd>Esc</kbd></dt><dd>Cancel while choosing an area or counting down</dd>
         </dl>
       </div>

@@ -8,6 +8,14 @@ const cx = document.getElementById('cx');
 const cy = document.getElementById('cy');
 
 const MIN = 24; // CSS px
+
+// The same overlay picks the area for a screenshot.
+if (new URLSearchParams(location.search).get('shot')) {
+  document.querySelector('.hint strong').textContent = 'Drag to select the area to capture';
+  document.querySelector('.hint span').textContent = 'Press Enter to capture the whole screen. Press Esc to cancel.';
+  document.getElementById('go').innerHTML = 'Capture this area';
+  document.title = 'Select an area to capture';
+}
 let start = null;
 let rect = null; // { x, y, w, h } in CSS px
 let busy = false;

@@ -79,6 +79,19 @@ function mockPeaks(seconds, perSec) {
 function mock(cmd, args) {
   const now = Date.now();
   switch (cmd) {
+    case 'shot_load':
+      return {
+        recording: { id: args.id, title: 'Screenshot 2026-11-01 at 21.58.12', path: '', createdMs: now, durationSec: 0, width: 1600, height: 1000, sizeBytes: 820_000, kind: 'image' },
+        imageUrl: 'mock/shot.png', original: true,
+        annotations: { version: 1, shapes: [
+          { type: 'highlight', x: 120, y: 236, w: 520, h: 46, color: '#f5b800', size: 'm' },
+          { type: 'arrow', x1: 980, y1: 640, x2: 760, y2: 470, color: '#e23b3e', size: 'm' },
+          { type: 'box', x: 690, y: 330, w: 420, h: 250, color: '#e23b3e', size: 'm' },
+          { type: 'text', x: 990, y: 650, text: 'New export button', color: '#e23b3e', size: 'm' },
+          { type: 'blur', x: 1240, y: 120, w: 300, h: 60, color: null, size: 'm' },
+        ] },
+      };
+    case 'shot_save': window.__lastSave = args; return { id: args.id };
     case 'editor_load':
       return {
         recording: { id: args.id, title: 'Recording 2026-11-01 at 10.42.17', path: 'C:\\Users\\you\\Videos\\Tallycast\\Recording 2026-11-01 at 10.42.17.mp4', createdMs: now, durationSec: 312.4, width: 2560, height: 1440, sizeBytes: 48_200_000 },
@@ -118,7 +131,7 @@ function mock(cmd, args) {
         ],
         micDevices: ['Microphone (Shure MV7)', 'Headset Microphone (Jabra Evolve2 65)', 'Microphone Array (Realtek Audio)'],
         defaultMic: 'Microphone (Shure MV7)', systemAudioSupported: true, wayland: false,
-        outputDir: 'C:\\Users\\you\\Videos\\Tallycast', recordHotkey: 'Alt+Shift+R', pauseHotkey: 'Alt+Shift+P',
+        outputDir: 'C:\\Users\\you\\Videos\\Tallycast', recordHotkey: 'Alt+Shift+R', pauseHotkey: 'Alt+Shift+P', shotHotkey: 'Alt+Shift+S',
       };
     case 'get_settings': return { ...mockSettings };
     case 'get_engines':
@@ -138,6 +151,7 @@ function mock(cmd, args) {
       return [
         { id: '1', title: 'Recording 2026-11-01 at 10.42.17', path: 'C:\\Users\\you\\Videos\\Tallycast\\Recording 2026-11-01 at 10.42.17.mp4', createdMs: now - 40 * 60_000, durationSec: 312.4, width: 2560, height: 1440, sizeBytes: 48_200_000, thumbnail: mockThumb(220) },
         { id: '2', title: 'Recording 2026-10-31 at 16.05.51', path: '', createdMs: now - day - 3_600_000, durationSec: 74.9, width: 1280, height: 720, sizeBytes: 9_600_000, thumbnail: mockThumb(150) },
+        { id: '4', title: 'Screenshot 2026-11-01 at 09.40.55', path: '', createdMs: now - 2 * 3_600_000, durationSec: 0, width: 1600, height: 1000, sizeBytes: 820_000, kind: 'image', thumbnail: mockThumb(260) },
         { id: '3', title: 'Recording 2026-10-28 at 09.12.03', path: '', createdMs: now - 4 * day, durationSec: 1265, width: 1920, height: 1080, sizeBytes: 211_000_000, thumbnail: mockThumb(30) },
       ];
     case 'get_status': return { phase: 'recording', elapsedMs: 83_400, paused: false, width: 1920, height: 1080 };

@@ -13,6 +13,7 @@ mod media;
 mod mediaserver;
 mod recorder;
 mod settings;
+mod shot;
 mod util;
 mod wins;
 
@@ -26,6 +27,10 @@ fn record_shortcut() -> Shortcut {
 
 fn pause_shortcut() -> Shortcut {
     Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::KeyP)
+}
+
+fn shot_shortcut() -> Shortcut {
+    Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::KeyS)
 }
 
 /// Runs blocking work off the UI thread.
@@ -178,6 +183,31 @@ async fn begin_capture(app: AppHandle, mode: String, monitor: usize) -> Result<(
 }
 
 #[tauri::command]
+async fn begin_screenshot(app: AppHandle, mode: String, monitor: usize) -> Result<(), String> {
+    flow_step(app, move |app| flow::begin_screenshot(app, &mode, monitor)).await
+}
+
+#[tauri::command]
+async fn open_shot(app: AppHandle, id: String) -> Result<(), String> {
+    blocking(app, move |app| wins::open_shot(&app, &id)).await
+}
+
+#[tauri::command]
+async fn shot_load(app: AppHandle, id: String) -> Result<shot::ShotData, String> {
+    blocking(app, move |app| shot::load(&app, &id)).await
+}
+
+#[tauri::command]
+async fn shot_save(
+    app: AppHandle,
+    id: String,
+    png: String,
+    annotations: serde_json::Value,
+) -> Result<library::RecordingView, String> {
+    blocking(app, move |app| shot::save(&app, &id, &png, &annotations)).await
+}
+
+#[tauri::command]
 async fn region_selected(app: AppHandle, x: i32, y: i32, width: u32, height: u32) -> Result<(), String> {
     flow_step(app, move |app| flow::region_selected(app, x, y, width, height)).await
 }
@@ -228,6 +258,8 @@ pub fn run() {
                     let app = app.clone();
                     if shortcut == &record_shortcut() {
                         let _ = tauri::async_runtime::spawn_blocking(move || flow::hotkey_record(&app));
+                    } else if shortcut == &shot_shortcut() {
+                        let _ = tauri::async_runtime::spawn_blocking(move || flow::hotkey_screenshot(&app));
                     } else if shortcut == &pause_shortcut() {
                         let _ = tauri::async_runtime::spawn_blocking(move || {
                             let _ = flow::toggle_pause(&app);
@@ -240,7 +272,7 @@ pub fn run() {
         .manage(editor::EditorState::default())
         .manage(engine::EngineState::default())
         .setup(|app| {
-            for shortcut in [record_shortcut(), pause_shortcut()] {
+            for shortcut in [record_shortcut(), pause_shortcut(), shot_shortcut()] {
                 if let Err(e) = app.global_shortcut().register(shortcut) {
                     // Another app may own the combination; recording still works from the UI.
                     eprintln!("[tallycast] could not register a global hotkey: {e}");
@@ -269,6 +301,10 @@ pub fn run() {
             editor_export,
             editor_cancel_export,
             begin_capture,
+            begin_screenshot,
+            open_shot,
+            shot_load,
+            shot_save,
             region_selected,
             countdown_done,
             toggle_pause,
