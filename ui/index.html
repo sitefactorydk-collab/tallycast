@@ -31,6 +31,17 @@
     <button class="btn btn-quiet" id="banner-locate">Locate FFmpeg</button>
   </div>
 
+  <div class="banner banner-info" id="update-banner" hidden>
+    <i data-icon="download"></i>
+    <div class="banner-text">
+      <strong id="update-title">A new version of Tallycast is available.</strong>
+      <span id="update-sub"></span>
+    </div>
+    <button class="btn btn-primary" id="update-download"><i data-icon="download"></i>Download</button>
+    <button class="btn btn-quiet" id="update-notes">What's new</button>
+    <button class="tb-btn banner-close" id="update-later" title="Remind me about the next version" aria-label="Later"><i data-icon="close"></i></button>
+  </div>
+
   <main class="layout">
     <section class="setup" aria-label="Recording setup">
       <div class="setup-scroll">
@@ -186,6 +197,14 @@
           <button type="button" class="btn btn-quiet" id="auto-ffmpeg">Find automatically</button>
         </div>
         <span class="field-hint" id="ffmpeg-version"></span>
+      </div>
+
+      <div class="field field-inline">
+        <div>
+          <span class="field-label">Version</span>
+          <p class="field-hint" id="version-line"></p>
+        </div>
+        <button type="button" class="btn btn-quiet" id="check-updates">Check for updates</button>
       </div>
 
       <div class="field">

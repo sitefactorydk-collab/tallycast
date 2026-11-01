@@ -132,7 +132,7 @@ function mock(cmd, args) {
         ],
         micDevices: ['Microphone (Shure MV7)', 'Headset Microphone (Jabra Evolve2 65)', 'Microphone Array (Realtek Audio)'],
         defaultMic: 'Microphone (Shure MV7)', systemAudioSupported: true, wayland: false,
-        outputDir: 'C:\\Users\\you\\Videos\\Tallycast', recordHotkey: 'Alt+Shift+R', pauseHotkey: 'Alt+Shift+P', shotHotkey: 'Alt+Shift+S',
+        outputDir: 'C:\\Users\\you\\Videos\\Tallycast', recordHotkey: 'Alt+Shift+R', pauseHotkey: 'Alt+Shift+P', shotHotkey: 'Alt+Shift+S', appVersion: '0.1.0', repo: 'sitefactorydk-collab/tallycast',
       };
     case 'get_settings': return { ...mockSettings };
     case 'get_engines':

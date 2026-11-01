@@ -108,6 +108,36 @@ body {
   color: var(--tally);
 }
 
+.banner-info {
+  background: var(--cobalt-soft);
+  border-color: color-mix(in srgb, var(--cobalt) 30%, transparent);
+}
+
+.banner-info > .icon {
+  color: var(--cobalt);
+}
+
+.banner .btn-primary {
+  border: 0;
+  background: var(--cobalt);
+  color: #fff;
+  font-weight: 600;
+}
+
+.banner .btn-primary:hover {
+  background: var(--cobalt-ink);
+}
+
+.banner .banner-close {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-s);
+}
+
+.field-inline .field-hint {
+  margin: 2px 0 0;
+}
+
 .banner-text {
   flex: 1;
   display: flex;

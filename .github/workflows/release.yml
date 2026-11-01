@@ -1,0 +1,76 @@
+# Builds the Windows installer and publishes it as a GitHub Release whenever a version
+# tag (v0.2.0, v0.3.1, …) is pushed. Tallycast checks this repository's latest release
+# at start-up and offers the installer when it is newer than the running version.
+#
+# To publish a version, run on your PC:  npm.cmd run release -- 0.2.0
+# (scripts/release.ps1 bumps the version, commits, tags and pushes).
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that the tag matches the app version
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'.TrimStart('v')
+          $app = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          if ($tag -ne $app) {
+            Write-Error "Tag v$tag does not match the version in tauri.conf.json ($app). Publish with: npm.cmd run release -- <version>"
+            exit 1
+          }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # The installer bundles FFmpeg (scripts/prepare-ffmpeg.ps1 picks it up from
+      # TALLYCAST_FFMPEG). The "essentials" build has everything Tallycast uses.
+      - name: Download FFmpeg to bundle
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'ffmpeg.zip'
+          $dir = Join-Path $env:RUNNER_TEMP 'ffmpeg'
+          $url = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
+          for ($try = 1; $try -le 3; $try++) {
+            try { Invoke-WebRequest -Uri $url -OutFile $zip; break }
+            catch { if ($try -eq 3) { throw }; Start-Sleep -Seconds (10 * $try) }
+          }
+          Expand-Archive -Path $zip -DestinationPath $dir
+          $exe = Get-ChildItem -Path $dir -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          & $exe.FullName -hide_banner -version | Select-Object -First 1
+          "TALLYCAST_FFMPEG=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Install the Tauri CLI
+        run: npm ci
+
+      - name: Build the installer and publish the release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Tallycast ${{ github.ref_name }}
+          releaseBody: |
+            **To install or update:** download `Tallycast___VERSION___x64-setup.exe` below and run it. Your recordings, screenshots and settings stay as they are.
+
+            Windows may say "Windows protected your PC" because the installer isn't code-signed: choose **More info › Run anyway**.
+          releaseDraft: false
+          prerelease: false

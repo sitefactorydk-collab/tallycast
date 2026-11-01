@@ -111,6 +111,24 @@ src-tauri\target\release\bundle\nsis\Tallycast_0.1.0_x64-setup.exe
   you distribute Tallycast publicly, you must comply with the GPL (or bundle an
   LGPL build of FFmpeg instead).
 
+### Publishing a new version (with automatic updates)
+
+Tallycast checks this repository's latest GitHub Release at start-up (and twice a day
+while open). When it is newer than the running version, a banner offers the installer;
+*Settings › Check for updates* checks right away.
+
+To publish a version, commit your changes, then run:
+
+```powershell
+npm.cmd run release -- 0.2.0
+```
+
+This sets the version everywhere, commits "Release v0.2.0", tags `v0.2.0` and pushes.
+GitHub Actions (`.github/workflows/release.yml`) then builds the installer on Windows,
+with FFmpeg bundled, and publishes the release with `Tallycast_0.2.0_x64-setup.exe`
+attached. That takes about 10–20 minutes; follow it under the repository's *Actions* tab.
+Version numbers must go up (0.2.0 → 0.2.1 or 0.3.0).
+
 ### First run checklist
 
 - **Camera:** turn on *Webcam bubble* in the main window first. Windows may ask for

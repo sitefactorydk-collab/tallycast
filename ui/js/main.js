@@ -515,6 +515,7 @@ function renderSettingsSheet() {
   $('#cursor-toggle').checked = settings.showCursor;
   $('#ffmpeg-path').textContent = env.ffmpegPath || 'Not found';
   $('#ffmpeg-version').textContent = env.ffmpegVersion || 'Install FFmpeg with: winget install Gyan.FFmpeg';
+  $('#version-line').textContent = env.appVersion ? `Tallycast ${env.appVersion}` : '';
 }
 
 function openSettings() {
@@ -563,7 +564,80 @@ function wireSettings() {
     await refreshEnvironment();
     renderSettingsSheet();
   };
+  $('#check-updates').onclick = () => checkForUpdates(true);
   $('#open-folder').onclick = () => invoke('open_output_dir').catch((e) => toast(errorText(e), 'error'));
+}
+
+// ───────────────────────────── updates ─────────────────────────────
+
+const UPDATE_EVERY_MS = 12 * 60 * 60 * 1000;
+const SKIP_KEY = 'tallycast.skipUpdate';
+
+/** Compares "1.2.10" and "1.2.9" numerically; a pre-release suffix is ignored. */
+function isNewer(latest, current) {
+  const parts = (v) => String(v).replace(/^v/i, '').split('-')[0].split('.').map((n) => parseInt(n, 10) || 0);
+  const a = parts(latest);
+  const b = parts(current);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0);
+  }
+  return false;
+}
+
+function skipped() {
+  try { return localStorage.getItem(SKIP_KEY); } catch { return null; }
+}
+
+function openLink(url) {
+  invoke('open_url', { url }).catch((e) => toast(errorText(e), 'error'));
+}
+
+function showUpdate(release, latest) {
+  const current = state.env.appVersion;
+  const setup = (release.assets || []).find((a) => /-setup\.exe$/i.test(a.name));
+  $('#update-title').textContent = `Tallycast ${latest} is available.`;
+  $('#update-sub').textContent = setup
+    ? `You have ${current}. Download the installer and run it; your recordings and settings stay as they are.`
+    : `You have ${current}. The installer for this version is still being built; try again in a few minutes.`;
+  $('#update-download').hidden = !setup;
+  $('#update-download').onclick = () => setup && openLink(setup.browser_download_url);
+  $('#update-notes').onclick = () => openLink(release.html_url);
+  $('#update-later').onclick = () => {
+    try { localStorage.setItem(SKIP_KEY, latest); } catch { /* storage unavailable */ }
+    $('#update-banner').hidden = true;
+  };
+  $('#update-banner').hidden = false;
+}
+
+/** Asks GitHub for the latest published release. `manual` reports every outcome. */
+async function checkForUpdates(manual = false) {
+  const { appVersion, repo } = state.env || {};
+  if (!appVersion || !repo) return;
+  const button = $('#check-updates');
+  if (manual) { button.disabled = true; button.textContent = 'Checking…'; }
+  try {
+    const res = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
+      headers: { Accept: 'application/vnd.github+json' },
+      cache: 'no-store',
+    });
+    if (res.status === 404) {
+      if (manual) toast('No version has been published on GitHub yet.');
+      return;
+    }
+    if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
+    const release = await res.json();
+    const latest = String(release.tag_name || '').replace(/^v/i, '');
+    if (latest && isNewer(latest, appVersion)) {
+      if (manual || skipped() !== latest) showUpdate(release, latest);
+      if (manual) $('#settings').close();
+    } else if (manual) {
+      toast(`You have the latest version (${appVersion}).`, 'ok');
+    }
+  } catch (e) {
+    if (manual) toast(`Could not check for updates: ${errorText(e)}`, 'error');
+  } finally {
+    if (manual) { button.disabled = false; button.textContent = 'Check for updates'; }
+  }
 }
 
 // ───────────────────────────── start-up ─────────────────────────────
@@ -636,6 +710,10 @@ async function init() {
   window.addEventListener('resize', () => renderDisplays());
 
   if (!isTauri) document.documentElement.dataset.preview = 'browser';
+
+  // Quietly look for a newer release now and twice a day while the app stays open.
+  checkForUpdates();
+  setInterval(() => checkForUpdates(), UPDATE_EVERY_MS);
 }
 
 init().catch((e) => toast(`Tallycast could not start: ${errorText(e)}`, 'error'));

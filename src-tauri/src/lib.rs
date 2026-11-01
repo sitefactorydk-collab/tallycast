@@ -79,6 +79,20 @@ async fn get_engines(app: AppHandle, force: bool) -> Result<engine::EngineView, 
     blocking(app, move |app| engine::view(&app, force)).await
 }
 
+/// Opens a page of Tallycast's GitHub repository (release notes, installer download)
+/// in the browser. Nothing else may be opened this way.
+#[tauri::command]
+async fn open_url(app: AppHandle, url: String) -> Result<(), String> {
+    blocking(app, move |_| {
+        let allowed = format!("https://github.com/{}/", flow::REPO);
+        if !url.starts_with(&allowed) || url.chars().any(|c| c.is_whitespace() || c == '"') {
+            return Err("Only links to Tallycast's GitHub page can be opened.".into());
+        }
+        util::open_url(&url)
+    })
+    .await
+}
+
 #[tauri::command]
 async fn pick_folder(app: AppHandle) -> Result<Option<String>, String> {
     blocking(app, |app| {
@@ -296,6 +310,7 @@ pub fn run() {
             get_settings,
             save_settings,
             get_engines,
+            open_url,
             pick_folder,
             pick_ffmpeg,
             list_recordings,

@@ -121,6 +121,23 @@ pub fn open_path(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Opens a web address in the default browser.
+pub fn open_url(url: &str) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        Command::new("explorer.exe").arg(url).spawn().map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open").arg(url).spawn().map_err(|e| e.to_string())?;
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        Command::new("xdg-open").arg(url).spawn().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// Shows a file selected in the system file manager.
 pub fn reveal_path(path: &Path) -> Result<(), String> {
     if !path.exists() {

@@ -8,7 +8,8 @@
     "dev": "tauri dev",
     "build": "tauri build",
     "tauri": "tauri",
-    "preview": "npx --yes serve ui"
+    "preview": "npx --yes serve ui",
+    "release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release.ps1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

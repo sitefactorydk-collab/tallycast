@@ -19,6 +19,8 @@ use tauri::{AppHandle, Emitter, Manager};
 pub const RECORD_HOTKEY: &str = "Alt+Shift+R";
 pub const PAUSE_HOTKEY: &str = "Alt+Shift+P";
 pub const SHOT_HOTKEY: &str = "Alt+Shift+S";
+/// The GitHub repository whose releases the app checks for updates.
+pub const REPO: &str = "sitefactorydk-collab/tallycast";
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Phase {
@@ -89,6 +91,10 @@ pub struct Environment {
     pub record_hotkey: String,
     pub pause_hotkey: String,
     pub shot_hotkey: String,
+    /// This build's version, e.g. "0.2.0".
+    pub app_version: String,
+    /// "owner/name" on GitHub, for the update check.
+    pub repo: String,
 }
 
 pub fn environment(app: &AppHandle) -> Result<Environment, String> {
@@ -110,6 +116,8 @@ pub fn environment(app: &AppHandle) -> Result<Environment, String> {
         record_hotkey: RECORD_HOTKEY.into(),
         pause_hotkey: PAUSE_HOTKEY.into(),
         shot_hotkey: SHOT_HOTKEY.into(),
+        app_version: app.package_info().version.to_string(),
+        repo: REPO.into(),
     })
 }
 
