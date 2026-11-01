@@ -688,6 +688,17 @@ h2 {
   color: var(--slate);
 }
 
+.rec-side {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rec-copy {
+  height: 30px;
+  padding: 0 11px 0 9px;
+}
+
 .rec-actions {
   display: flex;
   gap: 2px;

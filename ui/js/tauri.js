@@ -91,6 +91,7 @@ function mock(cmd, args) {
           { type: 'blur', x: 1240, y: 120, w: 300, h: 60, color: null, size: 'm' },
         ] },
       };
+    case 'recording_url': return new URL('mock/shot.png', location.href).href;
     case 'shot_save': window.__lastSave = args; return { id: args.id };
     case 'editor_load':
       return {

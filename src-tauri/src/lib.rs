@@ -187,6 +187,16 @@ async fn begin_screenshot(app: AppHandle, mode: String, monitor: usize) -> Resul
     flow_step(app, move |app| flow::begin_screenshot(app, &mode, monitor)).await
 }
 
+/// A localhost URL for a library item's file, so a page can read it (e.g. to copy it).
+#[tauri::command]
+async fn recording_url(app: AppHandle, id: String) -> Result<String, String> {
+    blocking(app, move |app| {
+        let rec = library::find(&app, &id).ok_or("That item is no longer in the library.")?;
+        editor::media_url(&app, std::path::Path::new(&rec.path))
+    })
+    .await
+}
+
 #[tauri::command]
 async fn open_shot(app: AppHandle, id: String) -> Result<(), String> {
     blocking(app, move |app| wins::open_shot(&app, &id)).await
@@ -303,6 +313,7 @@ pub fn run() {
             begin_capture,
             begin_screenshot,
             open_shot,
+            recording_url,
             shot_load,
             shot_save,
             region_selected,

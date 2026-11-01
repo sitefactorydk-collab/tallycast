@@ -410,6 +410,27 @@ async function startScreenshot() {
   await invoke('begin_screenshot', { mode: state.mode, monitor: state.monitor });
 }
 
+/** Puts a screenshot's PNG (with its marks) on the clipboard. */
+async function copyImage(r, button) {
+  try {
+    // Hand the clipboard a promise right away, while the click still counts as a user
+    // gesture; the PNG is fetched from the local media server meanwhile.
+    const png = invoke('recording_url', { id: r.id })
+      .then((url) => fetch(url))
+      .then((res) => {
+        if (!res.ok) throw new Error(`the file could not be read (${res.status})`);
+        return res.blob();
+      })
+      .then((blob) => (blob.type === 'image/png' ? blob : new Blob([blob], { type: 'image/png' })));
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+    toast('Copied. Paste it anywhere with Ctrl+V.', 'ok');
+    button.classList.add('done');
+    setTimeout(() => button.classList.remove('done'), 1500);
+  } catch (e) {
+    toast(`Could not copy the image: ${errorText(e)}`, 'error');
+  }
+}
+
 // ───────────────────────────── library ─────────────────────────────
 
 function renderLibrary(newId = null) {
@@ -437,20 +458,25 @@ function renderLibrary(newId = null) {
           <span>${formatSize(r.sizeBytes)}</span>
         </p>
       </div>
+      <div class="rec-side">
       <div class="rec-actions">
         ${image
           ? `<button class="icon-btn" data-act="edit" title="Annotate" aria-label="Annotate">${icon('annotate')}</button>
-        <button class="icon-btn" data-act="open" title="Open" aria-label="Open">${icon('reveal')}</button>`
+        <button class="icon-btn" data-act="open" title="Open in your image viewer" aria-label="Open in your image viewer">${icon('open')}</button>`
           : `<button class="icon-btn" data-act="edit" title="Trim and cut" aria-label="Trim and cut">${icon('scissors')}</button>
         <button class="icon-btn" data-act="open" title="Play" aria-label="Play">${icon('play')}</button>`}
         <button class="icon-btn" data-act="reveal" title="Show in folder" aria-label="Show in folder">${icon('reveal')}</button>
         <button class="icon-btn danger" data-act="delete" title="Delete" aria-label="Delete">${icon('trash')}</button>
+      </div>
+      ${image ? `<button class="btn btn-quiet rec-copy" data-act="copy" title="Copy the image to the clipboard">${icon('copy')}Copy</button>` : ''}
       </div>`;
     const run = (cmd) => invoke(cmd, { id: r.id }).catch((e) => toast(errorText(e), 'error'));
     li.querySelector('.thumb').onclick = () => run(image ? 'open_shot' : 'open_recording');
     li.querySelector('[data-act="open"]').onclick = () => run('open_recording');
     li.querySelector('[data-act="edit"]').onclick = () => run(image ? 'open_shot' : 'open_editor');
     li.querySelector('[data-act="reveal"]').onclick = () => run('reveal_recording');
+    const copyBtn = li.querySelector('[data-act="copy"]');
+    if (copyBtn) copyBtn.onclick = () => copyImage(r, copyBtn);
     const del = li.querySelector('[data-act="delete"]');
     del.onclick = async () => {
       // Two-step delete: the first click arms the button for a few seconds.
