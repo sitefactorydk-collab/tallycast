@@ -16,11 +16,11 @@ Built for Windows, macOS and Linux, with Windows 11 as the first tested target.
   and is recorded as part of the video. Three sizes.
 - **Countdown, pause, resume, discard.** A floating control bar that is hidden from
   the recording itself.
-- **Graphics-card recording (Windows).** Desktop Duplication capture with AMD (AMF),
-  NVIDIA (NVENC) or Intel (Quick Sync) encoding, picked automatically after a quick
-  test of what works on your PC. Falls back to the processor (x264) by itself if the
-  graphics card path fails. Choose the encoder under *Video*, the capture method in
-  *Settings*.
+- **Optional graphics-card recording (Windows).** Recording uses the processor
+  (GDI capture + x264) by default. Under *Video › Encoder* you can switch to AMD (AMF),
+  NVIDIA (NVENC) or Intel (Quick Sync) with Desktop Duplication capture; Tallycast then
+  tests what works on your PC, checks the test recordings' picture, and falls back to
+  the processor by itself if the graphics card path fails.
 - **Global hotkeys.** `Alt+Shift+R` starts with your last choice or stops and saves.
   `Alt+Shift+P` pauses and resumes.
 - **Library.** Finished recordings with thumbnails, length, size; trim and cut, play,
@@ -152,16 +152,17 @@ src-tauri/src/
   settings.rs           Persisted settings
 ```
 
-**Video.** On Windows, FFmpeg captures with Desktop Duplication (`ddagrab`) and encodes
-H.264 on the graphics card (`h264_amf`, `h264_nvenc` or `h264_qsv`). With FFmpeg 8 and
+**Video.** By default FFmpeg grabs the screen with the platform's grabber (`gdigrab`
+on Windows) and encodes with x264 `veryfast`. When a graphics-card encoder is chosen, it
+captures with Desktop Duplication (`ddagrab`) and encodes H.264 on the graphics card
+(`h264_amf`, `h264_nvenc` or `h264_qsv`). With FFmpeg 8 and
 AMF or NVENC the captured GPU textures go straight into the encoder; older builds
-download frames first. At start-up Tallycast runs FFmpeg briefly to see which encoders
-and capture methods really work, and caches the answer per FFmpeg version (*Settings ›
-Test again* repeats it). The monitor's Desktop Duplication index is looked up through
+download frames first. When one is first chosen, Tallycast runs FFmpeg briefly to see
+which encoders and capture methods really work, compares each test recording's picture
+with a processor-encoded reference (a path can run without errors and still record black
+frames), and caches the answer per FFmpeg version (*Settings › Test again* repeats it). The monitor's Desktop Duplication index is looked up through
 DXGI. GPU recordings use no B-frames and a keyframe every two seconds, so the editor's
-lossless cut works on them. Without a usable graphics card, or on macOS (`avfoundation`)
-and Linux (`x11grab`), it grabs with the platform grabber (`gdigrab` on Windows) and
-encodes with x264 `veryfast`.
+lossless cut works on them. macOS (`avfoundation`) and Linux (`x11grab`) always use x264.
 
 **Audio.** Rust captures each source with `cpal` (system sound via WASAPI loopback on
 Windows) and streams raw samples to FFmpeg over a localhost socket, where they are mixed.

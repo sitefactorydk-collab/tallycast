@@ -52,6 +52,25 @@ fn write_disk(app: &AppHandle, e: &Engines) {
     }
 }
 
+fn cached_in(app: &AppHandle, slot: &mut Option<Engines>, path: &str, version: &str) -> Option<Engines> {
+    let fresh =
+        |e: &Engines| e.schema == hwenc::SCHEMA && e.ffmpeg_path == path && e.ffmpeg_version == version;
+    if let Some(e) = slot.as_ref().filter(|e| fresh(e)) {
+        return Some(e.clone());
+    }
+    let e = read_disk(app).filter(|e| fresh(e))?;
+    *slot = Some(e.clone());
+    Some(e)
+}
+
+/// The cached answer for `ffmpeg`, without probing.
+fn cached(app: &AppHandle, ffmpeg_bin: &Path) -> Option<Engines> {
+    let state = app.state::<EngineState>();
+    let mut slot = state.inner().cache.lock().unwrap_or_else(|p| p.into_inner());
+    let version = ffmpeg::version(ffmpeg_bin).unwrap_or_default();
+    cached_in(app, &mut slot, &util::path_str(ffmpeg_bin), &version)
+}
+
 /// What works with `ffmpeg`. Probes (a few seconds) unless a cached answer for this
 /// exact binary and version exists, or `force` is set.
 pub fn engines(app: &AppHandle, ffmpeg_bin: &Path, force: bool) -> Engines {
@@ -59,14 +78,8 @@ pub fn engines(app: &AppHandle, ffmpeg_bin: &Path, force: bool) -> Engines {
     let mut slot = state.inner().cache.lock().unwrap_or_else(|p| p.into_inner());
     let path = util::path_str(ffmpeg_bin);
     let version = ffmpeg::version(ffmpeg_bin).unwrap_or_default();
-    let fresh =
-        |e: &Engines| e.schema == hwenc::SCHEMA && e.ffmpeg_path == path && e.ffmpeg_version == version;
     if !force {
-        if let Some(e) = slot.as_ref().filter(|e| fresh(e)) {
-            return e.clone();
-        }
-        if let Some(e) = read_disk(app).filter(|e| fresh(e)) {
-            *slot = Some(e.clone());
+        if let Some(e) = cached_in(app, &mut slot, &path, &version) {
             return e;
         }
     }
@@ -86,10 +99,15 @@ pub fn engines(app: &AppHandle, ffmpeg_bin: &Path, force: bool) -> Engines {
 
 /// Forgets the cached answer, e.g. after a GPU recording failed to start.
 /// Starts the probe in the background so the first recording doesn't wait for it.
+/// Only when the settings ask for the graphics card: the processor needs no testing.
 pub fn warm_up(app: &AppHandle) {
+    let s = settings::load(app);
+    if !cfg!(windows) || !hwenc::wants_gpu(&s.encoder, &s.capture) {
+        return;
+    }
     let app = app.clone();
     std::thread::spawn(move || {
-        if let Some(ff) = ffmpeg::find(&settings::load(&app)) {
+        if let Some(ff) = ffmpeg::find(&s) {
             engines(&app, &ff, false);
         }
     });
@@ -97,7 +115,7 @@ pub fn warm_up(app: &AppHandle) {
 
 /// The pipeline to record `monitor` with, honouring the user's choices.
 pub fn plan_for(app: &AppHandle, ffmpeg_bin: &Path, s: &Settings, monitor: &MonitorInfo) -> Plan {
-    if !cfg!(windows) {
+    if !cfg!(windows) || !hwenc::wants_gpu(&s.encoder, &s.capture) {
         return Plan::safe();
     }
     let e = engines(app, ffmpeg_bin, false);
@@ -131,7 +149,9 @@ pub struct EngineView {
     pub encoders: Vec<EncoderOption>,
     pub ddagrab: bool,
     pub direct: Vec<Encoder>,
-    /// What "Automatic" (and the current choices) would use on the main display.
+    /// False until the graphics card has been tested (only done when asked for).
+    pub tested: bool,
+    /// What the current choices use on the main display.
     pub plan: Plan,
     pub plan_text: String,
 }
@@ -142,11 +162,20 @@ pub fn view(app: &AppHandle, force: bool) -> Result<EngineView, String> {
     if force {
         state_broken_clear(app);
     }
-    let e = if cfg!(windows) { engines(app, &ff, force) } else { Engines::default() };
+    let gpu = hwenc::wants_gpu(&s.encoder, &s.capture);
+    let found = if !cfg!(windows) {
+        None
+    } else if force || gpu {
+        Some(engines(app, &ff, force))
+    } else {
+        cached(app, &ff)
+    };
+    let tested = found.is_some();
+    let e = found.unwrap_or_default();
     let monitors = crate::wins::monitors(app).unwrap_or_default();
     let mon = monitors.get(s.last_monitor).or_else(|| monitors.iter().find(|m| m.primary)).cloned();
     let plan = match mon {
-        Some(m) if cfg!(windows) => {
+        Some(m) if cfg!(windows) && gpu => {
             let output = dxgi::output_index(m.x, m.y, m.width, m.height);
             hwenc::choose(&e, &s.encoder, &s.capture, output)
         }
@@ -157,7 +186,8 @@ pub fn view(app: &AppHandle, force: bool) -> Result<EngineView, String> {
         .map(|enc| EncoderOption {
             id: enc.id(),
             label: enc.label(),
-            available: enc == Encoder::X264 || e.encoders.contains(&enc),
+            // Untested encoders are offered; choosing one runs the test.
+            available: enc == Encoder::X264 || !tested || e.encoders.contains(&enc),
         })
         .collect();
     Ok(EngineView {
@@ -166,6 +196,7 @@ pub fn view(app: &AppHandle, force: bool) -> Result<EngineView, String> {
         encoders,
         ddagrab: e.ddagrab,
         direct: e.direct.clone(),
+        tested,
         plan_text: plan.describe(),
         plan,
     })

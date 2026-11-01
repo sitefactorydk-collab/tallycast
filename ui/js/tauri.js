@@ -126,13 +126,13 @@ function mock(cmd, args) {
         supported: true, ffmpegVersion: 'ffmpeg version 8.0-essentials_build-www.gyan.dev',
         encoders: [
           { id: 'amf', label: 'AMD graphics (AMF)', available: true },
-          { id: 'nvenc', label: 'NVIDIA graphics (NVENC)', available: false },
-          { id: 'qsv', label: 'Intel graphics (Quick Sync)', available: false },
+          { id: 'nvenc', label: 'NVIDIA graphics (NVENC)', available: true },
+          { id: 'qsv', label: 'Intel graphics (Quick Sync)', available: true },
           { id: 'x264', label: 'Processor (x264)', available: true },
         ],
-        ddagrab: true, direct: ['amf'],
-        plan: { capture: 'ddagrab', encoder: 'amf', direct: true, outputIdx: 0 },
-        planText: 'Desktop Duplication + AMD graphics (AMF), direct from the GPU',
+        ddagrab: false, direct: [], tested: false,
+        plan: { capture: 'gdigrab', encoder: 'x264', direct: false, shader: false, convert: false, outputIdx: 0 },
+        planText: 'GDI capture + Processor (x264)',
       };
     case 'list_recordings':
       return [

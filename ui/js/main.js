@@ -313,12 +313,12 @@ function renderEngines() {
   const hint = $('#encoder-hint');
   if (!view) {
     sel.disabled = true;
-    hint.textContent = 'Checking your graphics card…';
-    $('#engine-status').textContent = 'Checking your graphics card…';
+    hint.textContent = 'Testing your graphics card…';
+    $('#engine-status').textContent = 'Testing your graphics card…';
     return;
   }
+  // The processor is the default; graphics-card encoders are opt-in.
   const chosen = state.settings.encoder || 'auto';
-  const auto = view.encoders.find((e) => e.id === view.plan.encoder);
   sel.innerHTML = '';
   const add = (value, text, disabled = false) => {
     const o = document.createElement('option');
@@ -327,9 +327,11 @@ function renderEngines() {
     o.disabled = disabled;
     sel.append(o);
   };
-  add('auto', chosen === 'auto' && auto ? `Automatic – ${auto.label.split(' ')[0]}` : 'Automatic');
-  view.encoders.forEach((e) => add(e.id, e.available ? e.label : `${e.label} – not found`, !e.available));
-  sel.value = view.encoders.some((e) => e.id === chosen && e.available) ? chosen : 'auto';
+  add('auto', 'Processor (x264)');
+  view.encoders
+    .filter((e) => e.id !== 'x264')
+    .forEach((e) => add(e.id, e.available ? e.label : `${e.label} – not found`, !e.available));
+  sel.value = view.encoders.some((e) => e.id === chosen && e.id !== 'x264' && e.available) ? chosen : 'auto';
   sel.disabled = false;
   const gpu = view.plan.encoder !== 'x264';
   hint.textContent = view.plan.direct
@@ -339,13 +341,17 @@ function renderEngines() {
   const found = view.encoders.filter((e) => e.available && e.id !== 'x264').map((e) => e.label);
   $('#engine-status').textContent =
     `Recording uses ${view.planText}. ` +
-    (found.length ? `Found: ${found.join(', ')}.` : 'No graphics-card encoder was found.') +
-    (view.ddagrab ? '' : ' Desktop Duplication is not available.');
+    (!view.tested
+      ? 'The graphics card is tested when you choose one of its encoders.'
+      : (found.length ? `Found: ${found.join(', ')}.` : 'No graphics-card encoder was found.') +
+        (view.ddagrab ? '' : ' Desktop Duplication is not available.'));
 }
 
 async function loadEngines(force = false) {
   if (state.env?.os !== 'windows') return renderEngines();
-  if (force) {
+  // Testing runs FFmpeg for a few seconds; say so while it happens.
+  const gpu = !['auto', 'x264'].includes(state.settings.encoder || 'auto') || state.settings.capture === 'ddagrab';
+  if (force || (gpu && !state.engines?.tested)) {
     state.engines = null;
     renderEngines();
   }

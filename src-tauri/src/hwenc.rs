@@ -155,27 +155,35 @@ pub fn choose(e: &Engines, encoder_pref: &str, capture_pref: &str, output_idx: O
     choose_windows(e, encoder_pref, capture_pref, output_idx)
 }
 
+/// True when the settings ask for the graphics card (an encoder or Desktop
+/// Duplication); only then is anything probed. The default is the processor.
+pub fn wants_gpu(encoder_pref: &str, capture_pref: &str) -> bool {
+    Encoder::from_id(encoder_pref).is_some_and(|e| e != Encoder::X264) || capture_pref == "ddagrab"
+}
+
 fn choose_windows(e: &Engines, encoder_pref: &str, capture_pref: &str, output_idx: Option<u32>) -> Plan {
-    let dda = e.ddagrab && capture_pref != "gdigrab" && output_idx.is_some();
-    let available = |enc: Encoder| enc == Encoder::X264 || e.encoders.contains(&enc);
+    let dda_ok = e.ddagrab && output_idx.is_some();
+    // A graphics-card encoder only when it was asked for and works on this PC;
+    // "auto" and "x264" mean the processor.
+    let encoder = Encoder::from_id(encoder_pref)
+        .filter(|enc| *enc != Encoder::X264 && e.encoders.contains(enc))
+        .unwrap_or(Encoder::X264);
+    // GDI unless Desktop Duplication was asked for, or a GPU encoder runs on "auto".
+    let dda = dda_ok
+        && match capture_pref {
+            "ddagrab" => true,
+            "gdigrab" => false,
+            _ => encoder != Encoder::X264,
+        };
     let on_gpu =
         |enc: &Encoder| e.direct.contains(enc) || e.shader.contains(enc) || e.converted.contains(enc);
-    let encoder = match Encoder::from_id(encoder_pref).filter(|enc| available(*enc)) {
-        Some(enc) => enc,
-        None => {
-            // Automatic: an encoder that takes GPU frames directly beats one that doesn't.
-            let direct_first = Encoder::HARDWARE.into_iter().find(|enc| dda && on_gpu(enc));
-            direct_first
-                .or_else(|| Encoder::HARDWARE.into_iter().find(|enc| e.encoders.contains(enc)))
-                .unwrap_or(Encoder::X264)
-        }
-    };
+    let gpu = dda && encoder != Encoder::X264 && on_gpu(&encoder);
     Plan {
         capture: if dda { Capture::Ddagrab } else { Capture::Gdigrab },
         encoder,
-        direct: dda && on_gpu(&encoder),
-        shader: dda && !e.direct.contains(&encoder) && e.shader.contains(&encoder),
-        convert: dda
+        direct: gpu,
+        shader: gpu && !e.direct.contains(&encoder) && e.shader.contains(&encoder),
+        convert: gpu
             && !e.direct.contains(&encoder)
             && !e.shader.contains(&encoder)
             && e.converted.contains(&encoder),
@@ -529,14 +537,14 @@ mod tests {
     fn converted_path_uses_scale_d3d11() {
         use Encoder::*;
         let e = Engines { encoders: vec![Amf], ddagrab: true, converted: vec![Amf], ..Default::default() };
-        let p = choose_windows(&e, "auto", "auto", Some(0));
+        let p = choose_windows(&e, "amf", "auto", Some(0));
         assert_eq!((p.capture, p.encoder, p.direct, p.convert), (Capture::Ddagrab, Amf, true, true));
         assert_eq!(capture_filter(&p).as_deref(), Some("scale_d3d11=format=nv12"));
         assert!(!video_args(&p, 23, 30).contains(&"-pix_fmt".to_string()));
         assert!(p.describe().ends_with("converted and encoded on the GPU"));
         // Raw textures win over conversion when both work.
         let both = Engines { direct: vec![Amf], ..e };
-        let p = choose_windows(&both, "auto", "auto", Some(0));
+        let p = choose_windows(&both, "amf", "auto", Some(0));
         assert_eq!((p.direct, p.convert), (true, false));
     }
 
@@ -551,7 +559,7 @@ mod tests {
             converted: vec![Amf],
             ..Default::default()
         };
-        let p = choose_windows(&e, "auto", "auto", Some(0));
+        let p = choose_windows(&e, "amf", "auto", Some(0));
         assert_eq!((p.encoder, p.direct, p.shader, p.convert), (Amf, true, true, false));
         assert_eq!(capture_filter(&p), None);
         assert_eq!(
@@ -650,33 +658,38 @@ mod tests {
     }
 
     #[test]
-    fn choose_prefers_direct_gpu_paths() {
+    fn choose_defaults_to_the_processor() {
         use Encoder::*;
         let choose = choose_windows;
-        // AMD with FFmpeg 8: Desktop Duplication straight into AMF.
         let e = engines(&[Amf], true, &[Amf]);
+        // Automatic: GDI + x264, exactly the original recorder, even with a working GPU.
         let p = choose(&e, "auto", "auto", Some(0));
-        assert_eq!((p.capture, p.encoder, p.direct), (Capture::Ddagrab, Amf, true));
-        // AMD with FFmpeg 7: still AMF, frames downloaded.
-        let p = choose(&engines(&[Amf], true, &[]), "auto", "auto", Some(2));
-        assert_eq!((p.capture, p.encoder, p.direct, p.output_idx), (Capture::Ddagrab, Amf, false, 2));
-        // Monitor not on the default adapter: GDI + AMF.
-        let p = choose(&e, "auto", "auto", None);
-        assert_eq!((p.capture, p.encoder, p.direct), (Capture::Gdigrab, Amf, false));
-        // Asked for the processor.
-        assert_eq!(choose(&e, "x264", "auto", Some(0)).encoder, X264);
-        // Asked for NVENC on an AMD PC: falls back to automatic.
-        assert_eq!(choose(&e, "nvenc", "auto", Some(0)).encoder, Amf);
-        // Forced GDI.
-        assert_eq!(choose(&e, "auto", "gdigrab", Some(0)).capture, Capture::Gdigrab);
-        // Nothing works: the safe path.
-        let p = choose(&engines(&[], false, &[]), "auto", "auto", Some(0));
         assert_eq!((p.capture, p.encoder, p.direct), (Capture::Gdigrab, X264, false));
-        // Intel only, with Desktop Duplication: Quick Sync on downloaded frames.
-        let p = choose(&engines(&[Qsv], true, &[]), "auto", "auto", Some(0));
-        assert_eq!((p.capture, p.encoder, p.direct), (Capture::Ddagrab, Qsv, false));
-        // NVIDIA laptop with Intel graphics too: the direct-capable encoder wins.
-        assert_eq!(choose(&engines(&[Nvenc, Qsv], true, &[Nvenc]), "auto", "auto", Some(0)).encoder, Nvenc);
+        assert_eq!(choose(&e, "x264", "auto", Some(0)).capture, Capture::Gdigrab);
+        // Processor with Desktop Duplication asked for: frames downloaded for x264.
+        let p = choose(&e, "auto", "ddagrab", Some(0));
+        assert_eq!((p.capture, p.encoder, p.direct), (Capture::Ddagrab, X264, false));
+        assert_eq!(capture_filter(&p).as_deref(), Some("hwdownload,format=bgra"));
+        // AMD asked for: Desktop Duplication straight into AMF where that works...
+        let p = choose(&e, "amf", "auto", Some(0));
+        assert_eq!((p.capture, p.encoder, p.direct), (Capture::Ddagrab, Amf, true));
+        // ...downloaded frames where it doesn't (the RX 7800 XT with FFmpeg 9.0.2)...
+        let p = choose(&engines(&[Amf], true, &[]), "amf", "auto", Some(2));
+        assert_eq!((p.capture, p.encoder, p.direct, p.output_idx), (Capture::Ddagrab, Amf, false, 2));
+        // ...GDI when the monitor has no Desktop Duplication output, or GDI was asked for.
+        assert_eq!(choose(&e, "amf", "auto", None).capture, Capture::Gdigrab);
+        assert_eq!(choose(&e, "amf", "gdigrab", Some(0)).capture, Capture::Gdigrab);
+        // An encoder this PC doesn't have: the processor.
+        let cpu = (Capture::Gdigrab, X264, false);
+        let p = choose(&e, "nvenc", "auto", Some(0));
+        assert_eq!((p.capture, p.encoder, p.direct), cpu);
+        let p = choose(&engines(&[], false, &[]), "qsv", "auto", Some(0));
+        assert_eq!((p.capture, p.encoder, p.direct), cpu);
+        // When to probe at all.
+        assert!(!wants_gpu("auto", "auto"));
+        assert!(!wants_gpu("x264", "gdigrab"));
+        assert!(wants_gpu("amf", "auto"));
+        assert!(wants_gpu("auto", "ddagrab"));
     }
 
     #[cfg(not(windows))]
