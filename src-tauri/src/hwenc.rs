@@ -68,7 +68,7 @@ pub enum Capture {
 }
 
 /// Bumped whenever `probe` tests something new, so cached results are redone.
-pub const SCHEMA: u32 = 4;
+pub const SCHEMA: u32 = 5;
 
 /// What this PC's FFmpeg can do. Cached on disk per FFmpeg binary and version.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
@@ -342,23 +342,31 @@ fn last_lines(text: &str) -> String {
     }
 }
 
-/// A realistic size: hardware paths can reject very small GPU surfaces. Every monitor
-/// Tallycast supports is at least this big.
-const PROBE_DDA: &str = "ddagrab=output_idx=0:framerate=30:video_size=1280x720";
+/// The whole of output 0: realistic sizes (hardware paths can reject tiny surfaces),
+/// and enough of the screen that the picture check below has something to see.
+const PROBE_DDA: &str = "ddagrab=output_idx=0:framerate=30";
 
-fn test_args(input: &[&str], plan: &Plan, frames: u32) -> Vec<String> {
+/// Output arguments: discard, or write a small Matroska file to inspect.
+fn out_args(file: Option<&Path>) -> Vec<String> {
+    match file {
+        Some(f) => vec![s("-f"), s("matroska"), f.to_string_lossy().into_owned()],
+        None => vec![s("-f"), s("null"), s("-")],
+    }
+}
+
+fn test_args(input: &[&str], plan: &Plan, frames: u32, file: Option<&Path>) -> Vec<String> {
     let mut a: Vec<String> = input.iter().map(|x| x.to_string()).collect();
     if let Some(f) = capture_filter(plan) {
         a.extend([s("-vf"), f]);
     }
     a.extend([s("-frames:v"), s(frames)]);
     a.extend(video_args(plan, 23, 30));
-    a.extend([s("-f"), s("null"), s("-")]);
+    a.extend(out_args(file));
     a
 }
 
 /// Like `test_args`, with Desktop Duplication as a filter-graph source.
-fn graph_test_args(plan: &Plan, frames: u32) -> Vec<String> {
+fn graph_test_args(plan: &Plan, frames: u32, file: Option<&Path>) -> Vec<String> {
     let mut a = device_args(plan);
     let mut graph = PROBE_DDA.to_string();
     if let Some(f) = capture_filter(plan) {
@@ -368,8 +376,46 @@ fn graph_test_args(plan: &Plan, frames: u32) -> Vec<String> {
     graph.push_str("[v]");
     a.extend([s("-filter_complex"), graph, s("-map"), s("[v]"), s("-frames:v"), s(frames)]);
     a.extend(video_args(plan, 23, 30));
-    a.extend([s("-f"), s("null"), s("-")]);
+    a.extend(out_args(file));
     a
+}
+
+/// Brightness of the last frame in `file`: (average luma, brightest luma), 0–255.
+fn picture_stats(ffmpeg: &Path, file: &Path) -> Option<(f64, f64)> {
+    let out = command(ffmpeg)
+        .args(["-hide_banner", "-nostdin", "-loglevel", "info", "-i"])
+        .arg(file)
+        .args(["-vf", "signalstats,metadata=print", "-f", "null", "-"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .output()
+        .ok()?;
+    parse_stats(&String::from_utf8_lossy(&out.stderr))
+}
+
+fn parse_stats(text: &str) -> Option<(f64, f64)> {
+    let last = |key: &str| {
+        text.lines().rev().find_map(|l| l.split_once(key).and_then(|(_, v)| v.trim().parse::<f64>().ok()))
+    };
+    Some((last("lavfi.signalstats.YAVG=")?, last("lavfi.signalstats.YMAX=")?))
+}
+
+/// Whether a GPU path's picture matches the reference capture. A path can run without
+/// errors and still encode black frames (seen with AMF on a SHADER=1 device), so the
+/// probe compares what actually came out.
+fn picture_matches(test: (f64, f64), reference: (f64, f64)) -> Result<(), String> {
+    let (avg, max) = test;
+    let (ref_avg, ref_max) = reference;
+    if ref_max < 48.0 {
+        return Err(format!("the screen is too dark to check the picture (brightest {ref_max:.0})"));
+    }
+    if (avg - ref_avg).abs() > 12.0 || max < ref_max - 48.0 {
+        return Err(format!(
+            "wrong picture: brightness {avg:.0} (brightest {max:.0}), expected about {ref_avg:.0} \
+             (brightest {ref_max:.0})"
+        ));
+    }
+    Ok(())
 }
 
 /// Finds out what works on this PC. Takes a few seconds; Windows only.
@@ -383,7 +429,7 @@ pub fn probe(ffmpeg: &Path, version: &str) -> Engines {
     if !cfg!(windows) {
         return e;
     }
-    let timeout = Duration::from_secs(12);
+    let timeout = Duration::from_secs(15);
     let synthetic = ["-f", "lavfi", "-i", "color=c=black:s=640x360:r=30"];
     let dda_input = ["-f", "lavfi", "-i", PROBE_DDA];
     let plan = |capture, encoder, direct, convert| Plan {
@@ -394,18 +440,22 @@ pub fn probe(ffmpeg: &Path, version: &str) -> Engines {
         convert,
         output_idx: 0,
     };
+    let scratch = std::env::temp_dir().join(format!("tallycast-probe-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&scratch);
+    let reference_file = scratch.join("reference.mkv");
 
     // The three encoders and Desktop Duplication are independent: test them together.
+    // The Desktop Duplication test also records the reference picture (processor path).
     let (results, dda) = thread::scope(|scope| {
         let handles: Vec<_> = Encoder::HARDWARE
             .into_iter()
             .map(|enc| {
                 let p = plan(Capture::Gdigrab, enc, false, false);
-                scope.spawn(move || run(ffmpeg, &test_args(&synthetic, &p, 10), timeout))
+                scope.spawn(move || run(ffmpeg, &test_args(&synthetic, &p, 10, None), timeout))
             })
             .collect();
         let dda_plan = plan(Capture::Ddagrab, Encoder::X264, false, false);
-        let dda = run(ffmpeg, &test_args(&dda_input, &dda_plan, 3), timeout);
+        let dda = run(ffmpeg, &test_args(&dda_input, &dda_plan, 5, Some(&reference_file)), timeout);
         let results: Vec<(Encoder, Result<(), String>)> = Encoder::HARDWARE
             .into_iter()
             .zip(handles)
@@ -424,31 +474,46 @@ pub fn probe(ffmpeg: &Path, version: &str) -> Engines {
         Err(why) => e.notes.push(format!("ddagrab: {why}")),
     }
 
-    if e.ddagrab {
+    let reference = if e.ddagrab { picture_stats(ffmpeg, &reference_file) } else { None };
+    if e.ddagrab && reference.is_none() {
+        e.notes.push("could not measure the reference picture, so no on-GPU path is used".into());
+    }
+    if let Some(reference) = reference {
         // Quick Sync would need its own device mapping; it always takes downloaded frames.
         for enc in e.encoders.clone().into_iter().filter(|enc| *enc != Encoder::Qsv) {
             let direct = plan(Capture::Ddagrab, enc, true, false);
-            match run(ffmpeg, &test_args(&dda_input, &direct, 5), timeout) {
-                Ok(()) => e.direct.push(enc),
-                Err(why) => {
-                    e.notes.push(format!("{} direct: {why}", enc.id()));
-                    let shader = Plan { shader: true, ..direct };
-                    match run(ffmpeg, &graph_test_args(&shader, 5), timeout) {
-                        Ok(()) => {
-                            e.shader.push(enc);
-                            continue;
+            let shader = Plan { shader: true, ..direct };
+            let converted = plan(Capture::Ddagrab, enc, true, true);
+            // Best first; the first path that runs *and* shows the right picture wins.
+            let tiers: [(&str, &Plan); 3] =
+                [("direct", &direct), ("shader", &shader), ("converted", &converted)];
+            for (name, p) in tiers {
+                let file = scratch.join(format!("{}-{name}.mkv", enc.id()));
+                let args = if p.shader {
+                    graph_test_args(p, 5, Some(&file))
+                } else {
+                    test_args(&dda_input, p, 5, Some(&file))
+                };
+                let outcome = run(ffmpeg, &args, timeout).and_then(|()| {
+                    let stats = picture_stats(ffmpeg, &file).ok_or("could not read the test recording")?;
+                    picture_matches(stats, reference)
+                });
+                let _ = std::fs::remove_file(&file);
+                match outcome {
+                    Ok(()) => {
+                        match name {
+                            "direct" => e.direct.push(enc),
+                            "shader" => e.shader.push(enc),
+                            _ => e.converted.push(enc),
                         }
-                        Err(why) => e.notes.push(format!("{} shader: {why}", enc.id())),
+                        break;
                     }
-                    let converted = plan(Capture::Ddagrab, enc, true, true);
-                    match run(ffmpeg, &test_args(&dda_input, &converted, 5), timeout) {
-                        Ok(()) => e.converted.push(enc),
-                        Err(why) => e.notes.push(format!("{} converted: {why}", enc.id())),
-                    }
+                    Err(why) => e.notes.push(format!("{} {name}: {why}", enc.id())),
                 }
             }
         }
     }
+    let _ = std::fs::remove_dir_all(&scratch);
     e
 }
 
@@ -495,9 +560,9 @@ mod tests {
         );
         assert!(device_args(&Plan::safe()).is_empty());
         assert_eq!(
-            graph_test_args(&p, 5)[..8].join(" "),
+            graph_test_args(&p, 5, None)[..8].join(" "),
             "-init_hw_device d3d11va=tcgpu:0,SHADER=1 -filter_hw_device tcgpu -filter_complex \
-             ddagrab=output_idx=0:framerate=30:video_size=1280x720[v] -map [v]"
+             ddagrab=output_idx=0:framerate=30[v] -map [v]"
         );
     }
 
@@ -519,6 +584,20 @@ mod tests {
         assert_eq!(capture_filter(&step).as_deref(), Some("hwdownload,format=bgra"));
         assert!(step.fallback().unwrap().is_safe());
         assert_eq!(Plan::safe().fallback(), None);
+    }
+
+    #[test]
+    fn picture_check_rejects_black_output() {
+        let log = "[Parsed_metadata_1 @ 0x1] lavfi.signalstats.YAVG=122.302\n\
+                   [Parsed_metadata_1 @ 0x1] lavfi.signalstats.YMAX=210\n\
+                   [Parsed_metadata_1 @ 0x1] lavfi.signalstats.YAVG=120.5\n\
+                   [Parsed_metadata_1 @ 0x1] lavfi.signalstats.YMAX=235\n";
+        assert_eq!(parse_stats(log), Some((120.5, 235.0)));
+        assert_eq!(parse_stats("nothing"), None);
+        let desktop = (96.0, 235.0);
+        assert!(picture_matches((95.0, 235.0), desktop).is_ok());
+        assert!(picture_matches((16.0, 16.0), desktop).unwrap_err().starts_with("wrong picture"));
+        assert!(picture_matches((16.0, 16.0), (16.0, 20.0)).unwrap_err().contains("too dark"));
     }
 
     #[test]

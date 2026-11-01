@@ -72,8 +72,9 @@ pub fn engines(app: &AppHandle, ffmpeg_bin: &Path, force: bool) -> Engines {
     }
     let e = hwenc::probe(ffmpeg_bin, &version);
     eprintln!(
-        "[tallycast] video engines: hardware encoders {:?}, desktop duplication {}, direct {:?}, converted {:?}",
-        e.encoders, e.ddagrab, e.direct, e.converted
+        "[tallycast] video engines: hardware encoders {:?}, desktop duplication {}, direct {:?}, shader {:?}, \
+         converted {:?}",
+        e.encoders, e.ddagrab, e.direct, e.shader, e.converted
     );
     for note in &e.notes {
         eprintln!("[tallycast]   not used: {note}");
