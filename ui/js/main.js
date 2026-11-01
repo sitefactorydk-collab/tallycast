@@ -183,15 +183,18 @@ function renderAudio() {
   const sys = $('#sys-toggle');
   sys.disabled = !env.systemAudioSupported;
   sys.checked = env.systemAudioSupported && settings.systemAudio;
-  if (!env.systemAudioSupported) {
-    $('#sys-hint').textContent = env.os === 'macos'
-      ? 'Needs a virtual audio device such as BlackHole on macOS'
-      : 'Not available on this system yet';
-  }
+  const hints = {
+    windows: 'No speakers or headphones found. Connect one to record computer sound',
+    macos: 'Needs a virtual audio device such as BlackHole on macOS',
+  };
+  $('#sys-hint').textContent = env.systemAudioSupported
+    ? 'Everything you hear from your speakers'
+    : hints[env.os] || 'Not available on Linux yet';
 
-  if (!env.micDevices.length) {
+  const hasMic = env.micDevices.length > 0;
+  $('#mic-toggle').disabled = !hasMic;
+  if (!hasMic) {
     $('#mic-toggle').checked = false;
-    $('#mic-toggle').disabled = true;
     sel.disabled = true;
     def.textContent = 'No microphone found';
   }
@@ -486,7 +489,8 @@ async function init() {
   window.addEventListener('focus', () => {
     if (Date.now() - lastRefresh < 4000) return;
     lastRefresh = Date.now();
-    refreshEnvironment().catch(() => {});
+    // Devices may have been plugged in or removed while the window was in the background.
+    refreshEnvironment().then(renderAudio).catch(() => {});
     if (state.settings.webcamEnabled && !state.camStream) startCamPreview().catch(() => {});
   });
   window.addEventListener('resize', () => renderDisplays());
