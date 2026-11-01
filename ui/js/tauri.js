@@ -10,9 +10,16 @@ export async function invoke(cmd, args = {}) {
   return mock(cmd, args);
 }
 
+const mockHandlers = {};
+
 export async function listen(event, handler) {
   if (isTauri) return T.event.listen(event, (e) => handler(e.payload));
+  (mockHandlers[event] ||= []).push(handler);
   return () => {};
+}
+
+function mockEmit(event, payload) {
+  (mockHandlers[event] || []).forEach((h) => h(payload));
 }
 
 export function currentWindow() {
@@ -42,9 +49,65 @@ function mockThumb(hue) {
   return c.toDataURL('image/jpeg', 0.8);
 }
 
-function mock(cmd) {
+function mockStripFrame(i, count) {
+  const c = document.createElement('canvas');
+  c.width = 104; c.height = 58;
+  const g = c.getContext('2d');
+  const hue = 210 + (i / count) * 40;
+  g.fillStyle = `hsl(${hue} 25% 93%)`; g.fillRect(0, 0, 104, 58);
+  g.fillStyle = `hsl(${hue} 30% 80%)`; g.fillRect(0, 0, 104, 8);
+  g.fillStyle = `hsl(${hue} 50% 55%)`; g.fillRect(8, 16, 30 + ((i * 13) % 40), 5);
+  g.fillStyle = `hsl(${hue} 15% 72%)`;
+  for (let k = 0; k < 4; k++) g.fillRect(8, 27 + k * 7, 40 + ((i * 7 + k * 19) % 46), 3);
+  g.fillStyle = `hsl(${(hue + 150) % 360} 45% 72%)`; g.fillRect(70, 16, 26, 34);
+  return c.toDataURL('image/jpeg', 0.85);
+}
+
+function mockPeaks(seconds, perSec) {
+  const n = Math.round(seconds * perSec);
+  const out = new Array(n);
+  let env = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / perSec;
+    const speaking = Math.sin(t * 0.9) + Math.sin(t * 2.3 + 1) > -0.4;
+    env += ((speaking ? 0.55 + 0.4 * Math.abs(Math.sin(t * 7.1)) : 0.03) - env) * 0.25;
+    out[i] = Math.round(255 * Math.min(1, env * (0.6 + 0.4 * Math.abs(Math.sin(i * 1.7)))));
+  }
+  return out;
+}
+
+function mock(cmd, args) {
   const now = Date.now();
   switch (cmd) {
+    case 'editor_load':
+      return {
+        recording: { id: args.id, title: 'Recording 2026-11-01 at 10.42.17', path: 'C:\\Users\\you\\Videos\\Tallycast\\Recording 2026-11-01 at 10.42.17.mp4', createdMs: now, durationSec: 312.4, width: 2560, height: 1440, sizeBytes: 48_200_000 },
+        info: { duration: 312.4, start: 0, width: 2560, height: 1440, fps: 30, videoStart: 0, videoCodec: 'h264', hasAudio: true },
+        mediaUrl: 'mock/sample.webm',
+        edits: { inPoint: 4.2, outPoint: 298.5, cuts: [{ start: 61.3, end: 74.9 }, { start: 182, end: 190.4 }] },
+      };
+    case 'editor_filmstrip':
+      setTimeout(() => {
+        for (let i = 0; i < args.count; i++) mockEmit('filmstrip-frame', { id: args.id, index: i, time: 0, src: mockStripFrame(i, args.count) });
+      }, 150);
+      return null;
+    case 'editor_waveform':
+      return { perSec: 100, peaks: mockPeaks(312.4, 100) };
+    case 'editor_export':
+      return new Promise((resolve) => {
+        let f = 0;
+        const timer = setInterval(() => {
+          f = Math.min(1, f + 0.07);
+          mockEmit('export-progress', { stage: 'exporting', fraction: f });
+          if (f >= 1) {
+            clearInterval(timer);
+            resolve({
+              recording: { id: 'x', title: 'Recording 2026-11-01 at 10.42.17 (edited)', path: '', createdMs: now, durationSec: 272.3, width: 2560, height: 1440, sizeBytes: 41_000_000 },
+              report: { method: 'smart', duration: 272.3, reencoded: 6.4 },
+            });
+          }
+        }, 120);
+      });
     case 'get_environment':
       return {
         os: 'windows', ffmpegPath: 'C:\\Users\\you\\AppData\\Local\\Microsoft\\WinGet\\Links\\ffmpeg.exe',

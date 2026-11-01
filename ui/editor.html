@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tallycast Editor</title>
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/editor.css" />
+</head>
+<body class="editor">
+  <header class="titlebar" data-tauri-drag-region>
+    <div class="brand" data-tauri-drag-region>
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name" data-tauri-drag-region>Editor</span>
+      <span class="ed-title" id="ed-title" data-tauri-drag-region></span>
+    </div>
+    <div class="titlebar-actions">
+      <button class="btn btn-primary ed-export-btn" id="btn-export" disabled title="Export (Ctrl+E)">
+        <i data-icon="export"></i>Export
+      </button>
+      <span class="tb-sep" aria-hidden="true"></span>
+      <button class="tb-btn" id="btn-min" title="Minimize" aria-label="Minimize"><i data-icon="minimize"></i></button>
+      <button class="tb-btn" id="btn-max" title="Maximize" aria-label="Maximize"><i data-icon="maximize"></i></button>
+      <button class="tb-btn tb-close" id="btn-close" title="Close" aria-label="Close"><i data-icon="close"></i></button>
+    </div>
+  </header>
+
+  <main class="ed-main">
+    <section class="stage" aria-label="Preview">
+      <div class="viewport" id="viewport">
+        <video id="video" preload="auto" playsinline></video>
+        <div class="stage-msg" id="stage-msg" hidden></div>
+        <div class="stage-skip" id="stage-skip" aria-hidden="true"></div>
+      </div>
+    </section>
+
+    <aside class="inspector" aria-label="Edits">
+      <div class="insp-scroll">
+        <div class="result">
+          <span class="result-label">Result</span>
+          <span class="result-time tabular" id="result-time">–</span>
+          <span class="result-sub tabular" id="result-sub"></span>
+          <div class="result-bar" id="result-bar" aria-hidden="true"></div>
+        </div>
+
+        <div class="insp-group">
+          <h2>Trim</h2>
+          <div class="trim-row">
+            <span class="trim-label">Start</span>
+            <span class="trim-time tabular" id="in-time">0:00.00</span>
+            <button class="icon-btn" id="in-set" title="Start at the playhead (I)" aria-label="Start at the playhead"><i data-icon="markIn"></i></button>
+            <button class="icon-btn" id="in-reset" title="Start at the beginning" aria-label="Start at the beginning"><i data-icon="restore"></i></button>
+          </div>
+          <div class="trim-row">
+            <span class="trim-label">End</span>
+            <span class="trim-time tabular" id="out-time">0:00.00</span>
+            <button class="icon-btn" id="out-set" title="End at the playhead (O)" aria-label="End at the playhead"><i data-icon="markOut"></i></button>
+            <button class="icon-btn" id="out-reset" title="End at the end" aria-label="End at the end"><i data-icon="restore"></i></button>
+          </div>
+        </div>
+
+        <div class="insp-group">
+          <h2>Cuts <span class="count" id="cut-count"></span></h2>
+          <ul class="cut-list" id="cut-list"></ul>
+          <p class="insp-hint" id="cut-hint">Drag across the timeline to select a part, then press <kbd>Delete</kbd> to cut it out.</p>
+        </div>
+
+        <details class="insp-group keys">
+          <summary>Keyboard shortcuts</summary>
+          <dl class="shortcuts">
+            <dt><kbd>Space</kbd></dt><dd>Play or pause</dd>
+            <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>One frame back or forward</dd>
+            <dt><kbd>Shift</kbd>+<kbd>←</kbd> <kbd>→</kbd></dt><dd>One second</dd>
+            <dt><kbd>I</kbd> <kbd>O</kbd></dt><dd>Start or end at the playhead</dd>
+            <dt><kbd>Delete</kbd></dt><dd>Cut out the selection</dd>
+            <dt><kbd>S</kbd></dt><dd>Select from the playhead to the next edit</dd>
+            <dt><kbd>Esc</kbd></dt><dd>Clear the selection</dd>
+            <dt><kbd>Ctrl</kbd>+<kbd>Z</kbd></dt><dd>Undo (<kbd>Ctrl</kbd>+<kbd>Y</kbd> redo)</dd>
+            <dt><kbd>+</kbd> <kbd>−</kbd></dt><dd>Zoom the timeline (or <kbd>Ctrl</kbd>+wheel)</dd>
+            <dt><kbd>Ctrl</kbd>+<kbd>E</kbd></dt><dd>Export</dd>
+          </dl>
+        </details>
+      </div>
+    </aside>
+  </main>
+
+  <section class="transport" aria-label="Playback">
+    <div class="tp-left">
+      <span class="tp-time tabular"><span id="cur-time">0:00.00</span><span class="tp-dur" id="dur-time"> / 0:00.00</span></span>
+    </div>
+    <div class="tp-center">
+      <button class="icon-btn" id="go-in" title="Go to start (Home)" aria-label="Go to start"><i data-icon="toStart"></i></button>
+      <button class="icon-btn" id="step-back" title="Previous frame (←)" aria-label="Previous frame"><i data-icon="frameBack"></i></button>
+      <button class="play-btn" id="play" title="Play (Space)" aria-label="Play"><i data-icon="play"></i></button>
+      <button class="icon-btn" id="step-fwd" title="Next frame (→)" aria-label="Next frame"><i data-icon="frameFwd"></i></button>
+      <button class="icon-btn" id="go-out" title="Go to end (End)" aria-label="Go to end"><i data-icon="toEnd"></i></button>
+    </div>
+    <div class="tp-right">
+      <button class="btn btn-quiet" id="cut-btn" disabled title="Cut out the selection (Delete)"><i data-icon="scissors"></i>Cut</button>
+      <span class="tp-sep" aria-hidden="true"></span>
+      <button class="icon-btn" id="undo" disabled title="Undo (Ctrl+Z)" aria-label="Undo"><i data-icon="undo"></i></button>
+      <button class="icon-btn" id="redo" disabled title="Redo (Ctrl+Y)" aria-label="Redo"><i data-icon="redo"></i></button>
+      <span class="tp-sep" aria-hidden="true"></span>
+      <button class="icon-btn" id="zoom-out" title="Zoom out (−)" aria-label="Zoom out"><i data-icon="zoomOut"></i></button>
+      <input type="range" class="zoom" id="zoom" min="0" max="1000" value="0" aria-label="Timeline zoom" />
+      <button class="icon-btn" id="zoom-in" title="Zoom in (+)" aria-label="Zoom in"><i data-icon="zoomIn"></i></button>
+    </div>
+  </section>
+
+  <section class="timeline" id="timeline" aria-label="Timeline">
+    <div class="tl-scroll" id="tl-scroll">
+      <div class="tl-content" id="tl-content">
+        <canvas class="tl-canvas" id="tl-canvas"></canvas>
+        <div class="tl-overlays" id="tl-overlays">
+          <div class="tl-removed" id="tl-before"></div>
+          <div class="tl-removed" id="tl-after"></div>
+          <div id="tl-cuts"></div>
+          <div class="tl-sel" id="tl-sel" hidden>
+            <span class="tl-handle" data-h="sel-start"></span>
+            <span class="tl-handle" data-h="sel-end"></span>
+            <button class="tl-sel-cut" id="tl-sel-cut" title="Cut out (Delete)"><i data-icon="scissors"></i>Cut <span class="tabular" id="sel-len"></span></button>
+          </div>
+          <div class="tl-bracket tl-in" id="tl-in" data-h="in" title="Drag to change where the video starts"></div>
+          <div class="tl-bracket tl-out" id="tl-out" data-h="out" title="Drag to change where the video ends"></div>
+          <div class="tl-hover" id="tl-hover" hidden><span class="tabular"></span></div>
+          <div class="tl-playhead" id="tl-playhead"><span class="tl-knob"></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <dialog class="sheet export-sheet" id="export-sheet">
+    <form method="dialog" id="export-form">
+      <header class="sheet-head">
+        <h2 id="export-heading">Export video</h2>
+        <button class="tb-btn" value="close" id="export-x" aria-label="Close"><i data-icon="close"></i></button>
+      </header>
+
+      <div class="ex-pane" data-pane="setup">
+        <div class="ex-summary">
+          <div><span class="ex-k">Length</span><span class="ex-v tabular" id="ex-length"></span></div>
+          <div><span class="ex-k">Removed</span><span class="ex-v tabular" id="ex-removed"></span></div>
+          <div><span class="ex-k">Size</span><span class="ex-v tabular" id="ex-size"></span></div>
+        </div>
+        <p class="ex-note">Saved as a new MP4 next to the original, which is kept as it is.</p>
+        <div class="field field-inline">
+          <div>
+            <label class="field-label" for="ex-reencode">Re-encode everything</label>
+            <p class="field-hint">Off: untouched parts are copied as they are, only the frames around each cut are re-encoded. Fast and lossless. On: every frame is re-encoded. Slower.</p>
+          </div>
+          <label class="switch"><input type="checkbox" id="ex-reencode" /><span aria-hidden="true"></span></label>
+        </div>
+        <div class="ex-actions">
+          <button type="button" class="btn btn-quiet" value="cancel" id="ex-close">Cancel</button>
+          <button type="button" class="btn btn-primary" id="ex-start"><i data-icon="export"></i>Export</button>
+        </div>
+      </div>
+
+      <div class="ex-pane" data-pane="running" hidden>
+        <p class="ex-stage" id="ex-stage">Preparing…</p>
+        <div class="ex-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="ex-progress"><span id="ex-bar"></span></div>
+        <div class="ex-actions">
+          <span class="ex-pct tabular" id="ex-pct">0%</span>
+          <button type="button" class="btn btn-quiet" id="ex-cancel">Stop</button>
+        </div>
+      </div>
+
+      <div class="ex-pane" data-pane="done" hidden>
+        <div class="ex-done">
+          <span class="ex-done-mark"><i data-icon="check"></i></span>
+          <div>
+            <p class="ex-done-title" id="ex-done-title"></p>
+            <p class="ex-done-sub" id="ex-done-sub"></p>
+          </div>
+        </div>
+        <div class="ex-actions">
+          <button type="button" class="btn btn-quiet" id="ex-reveal"><i data-icon="reveal"></i>Show in folder</button>
+          <button type="button" class="btn btn-quiet" id="ex-play"><i data-icon="play"></i>Play</button>
+          <button type="button" class="btn btn-primary" id="ex-done">Done</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script type="module" src="js/editor.js"></script>
+</body>
+</html>

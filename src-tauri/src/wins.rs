@@ -9,7 +9,8 @@ use serde::Serialize;
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{
-    AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder,
 };
 
 pub const MAIN: &str = "main";
@@ -18,6 +19,7 @@ pub const COUNTDOWN: &str = "countdown";
 pub const RECBAR: &str = "recbar";
 pub const WEBCAM: &str = "webcam";
 pub const FRAME: &str = "frame";
+pub const EDITOR: &str = "editor";
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -273,5 +275,37 @@ pub fn resize_webcam(app: &AppHandle, size: &str) -> Result<(), String> {
     let y = pos.y + old.height as i32 - d as i32;
     win.set_size(PhysicalSize::new(d, d)).map_err(|e| e.to_string())?;
     win.set_position(PhysicalPosition::new(pos.x, y)).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// The editor: a normal, resizable window. If it is already open, it switches to `id`.
+pub fn open_editor(app: &AppHandle, id: &str) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window(EDITOR) {
+        let _ = app.emit_to(EDITOR, "editor-load", id.to_string());
+        let _ = win.show();
+        let _ = win.unminimize();
+        let _ = win.set_focus();
+        return Ok(());
+    }
+    // Fit comfortably on the display the main window is on.
+    let (mut w, mut h) = (1320.0, 860.0);
+    if let Some(m) = app.get_webview_window(MAIN).and_then(|win| win.current_monitor().ok().flatten()) {
+        let scale = m.scale_factor().max(0.5);
+        w = f64::min(w, m.size().width as f64 / scale * 0.92);
+        h = f64::min(h, m.size().height as f64 / scale * 0.9);
+    }
+    let id: String = id.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+    let win = WebviewWindowBuilder::new(app, EDITOR, WebviewUrl::App(format!("editor.html?id={id}").into()))
+        .title("Tallycast Editor")
+        .inner_size(w, h)
+        .min_inner_size(900.0, 600.0)
+        .decorations(false)
+        .resizable(true)
+        .center()
+        .visible(true)
+        .focused(true)
+        .build()
+        .map_err(|e| format!("Could not open the editor ({e})."))?;
+    let _ = win.set_focus();
     Ok(())
 }

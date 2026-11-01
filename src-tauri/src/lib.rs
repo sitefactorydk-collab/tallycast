@@ -1,9 +1,13 @@
 //! Tallycast — a cross-platform screen recorder built on Tauri.
 
 mod audio;
+mod edit;
+mod editor;
 mod ffmpeg;
 mod flow;
 mod library;
+mod media;
+mod mediaserver;
 mod recorder;
 mod settings;
 mod util;
@@ -111,6 +115,52 @@ async fn open_output_dir(app: AppHandle) -> Result<(), String> {
     blocking(app, |app| flow::open_output_dir(&app)).await
 }
 
+// ───────────────────────────── editor ─────────────────────────────
+
+#[tauri::command]
+async fn open_editor(app: AppHandle, id: String) -> Result<(), String> {
+    blocking(app, move |app| editor::open(&app, &id)).await
+}
+
+#[tauri::command]
+async fn editor_load(app: AppHandle, id: String) -> Result<editor::EditorData, String> {
+    blocking(app, move |app| editor::load(&app, &id)).await
+}
+
+#[tauri::command]
+async fn editor_filmstrip(app: AppHandle, id: String, count: usize, height: u32) -> Result<(), String> {
+    blocking(app, move |app| editor::filmstrip(&app, &id, count, height)).await
+}
+
+#[tauri::command]
+async fn editor_waveform(app: AppHandle, id: String) -> Result<Option<editor::Waveform>, String> {
+    blocking(app, move |app| editor::waveform(&app, &id)).await
+}
+
+#[tauri::command]
+async fn editor_save_edits(app: AppHandle, id: String, edits: edit::Edits) -> Result<(), String> {
+    blocking(app, move |app| editor::save_edits(&app, &id, &edits)).await
+}
+
+#[tauri::command]
+async fn editor_export(
+    app: AppHandle,
+    id: String,
+    edits: edit::Edits,
+    reencode: bool,
+) -> Result<editor::ExportResult, String> {
+    blocking(app, move |app| editor::export(&app, &id, &edits, reencode)).await
+}
+
+#[tauri::command]
+async fn editor_cancel_export(app: AppHandle) -> Result<(), String> {
+    blocking(app, |app| {
+        editor::cancel_export(&app);
+        Ok(())
+    })
+    .await
+}
+
 // ───────────────────────────── capture flow ─────────────────────────────
 
 #[tauri::command]
@@ -178,6 +228,7 @@ pub fn run() {
                 .build(),
         )
         .manage(flow::AppState::default())
+        .manage(editor::EditorState::default())
         .setup(|app| {
             for shortcut in [record_shortcut(), pause_shortcut()] {
                 if let Err(e) = app.global_shortcut().register(shortcut) {
@@ -198,6 +249,13 @@ pub fn run() {
             open_recording,
             reveal_recording,
             open_output_dir,
+            open_editor,
+            editor_load,
+            editor_filmstrip,
+            editor_waveform,
+            editor_save_edits,
+            editor_export,
+            editor_cancel_export,
             begin_capture,
             region_selected,
             countdown_done,

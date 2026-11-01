@@ -105,6 +105,7 @@ pub fn delete(app: &AppHandle, id: &str) -> Result<(), String> {
     if let Ok(t) = thumb_path(app, id) {
         let _ = fs::remove_file(t);
     }
+    crate::editor::forget(app, id);
     save(app, &items)
 }
 

@@ -1,8 +1,8 @@
 # Tallycast
 
 A screen recorder in the spirit of ScreenPal, built with Rust and Tauri 2.
-Version 0.1 is the **recorder**: pick a display or drag out an area, record with
-microphone, computer sound and a webcam bubble, pause and resume, and get an MP4.
+Pick a display or drag out an area, record with microphone, computer sound and a
+webcam bubble, pause and resume, and get an MP4. Then trim and cut it in the editor.
 
 Built for Windows, macOS and Linux, with Windows 11 as the first tested target.
 
@@ -18,8 +18,16 @@ Built for Windows, macOS and Linux, with Windows 11 as the first tested target.
   the recording itself.
 - **Global hotkeys.** `Alt+Shift+R` starts with your last choice or stops and saves.
   `Alt+Shift+P` pauses and resumes.
-- **Library.** Finished recordings with thumbnails, length, size; play, show in folder,
-  or delete.
+- **Library.** Finished recordings with thumbnails, length, size; trim and cut, play,
+  show in folder, or delete.
+- **Trim and cut editor.** A filmstrip and waveform timeline. Drag the blue brackets
+  (or press `I` / `O`) to set where the video starts and ends; drag across the timeline
+  and press `Delete` to cut out a part in the middle. Every edit lands on a frame and can
+  be undone. Playback skips what you cut. Edits are saved as you go.
+- **Lossless export.** The result is written as a new MP4 next to the original, which
+  is never changed. Untouched stretches are copied as they are; only the frames between
+  a cut and the next keyframe are re-encoded, so exports are fast and keep their quality.
+  A "Re-encode everything" switch is there as a fallback.
 - Light and dark themes follow Windows.
 
 Recordings are saved to `Videos\Tallycast` by default (change it in Settings).
@@ -119,6 +127,7 @@ ui/                     Front end (no bundler; Tauri serves this folder)
   recbar.html           Floating control bar (excluded from capture)
   webcam.html           Webcam bubble (included in capture)
   frame.html            Click-through outline around a recorded area
+  editor.html           Trim-and-cut editor (js/editor.js, css/editor.css)
   js/tauri.js           invoke/listen wrapper with browser mocks
 src-tauri/src/
   lib.rs                Tauri commands, plugins, global hotkeys
@@ -128,6 +137,10 @@ src-tauri/src/
   audio.rs              Mic + system-audio capture (cpal), streamed to FFmpeg
   wins.rs               Creating and placing the helper windows
   library.rs            Saved recordings and thumbnails
+  editor.rs             Editor window commands: load, filmstrip, waveform, export
+  edit.rs               Edit model (in/out/cuts) and the smart-cut / re-encode export
+  media.rs              Reading recordings: stream info, frame index, waveform, frames
+  mediaserver.rs        Localhost range server that streams a recording to the player
   settings.rs           Persisted settings
 ```
 
@@ -142,6 +155,14 @@ audio never drifts from the video when no sound is playing.
 **Pause.** Every stretch between start/resume and pause/stop is a separate Matroska
 segment (which survives crashes). Stopping joins the segments into one MP4 without
 re-encoding.
+
+**Editing.** The editor plays the original file through a tiny HTTP server bound to
+127.0.0.1 (only registered files are served). On export, FFmpeg lists every frame and
+keyframe without decoding. Each kept stretch is split into whole keyframe-to-keyframe
+groups, which are stream-copied, and the few frames before the first and after the last
+keyframe, which are re-encoded with x264. The pieces are joined as MPEG-TS (which carries
+the H.264 settings with every keyframe) and muxed to MP4; sound is cut to the same frame
+times and re-encoded as one AAC track, so it stays in sync.
 
 **Staying out of the shot.** The control bar, countdown and area outline are marked
 "exclude from capture" (Windows 10 2004+ and macOS), so they never appear in videos.
@@ -159,7 +180,7 @@ The webcam bubble deliberately does.
 
 ## Next steps (planned)
 
-1. Trim and cut editor
+1. ~~Trim and cut editor~~ (done)
 2. Hardware encoding and Desktop Duplication capture on Windows
 3. Screenshots with annotations
 4. System sound on macOS (ScreenCaptureKit) and Linux (PipeWire)

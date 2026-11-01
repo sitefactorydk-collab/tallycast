@@ -344,6 +344,7 @@ function renderLibrary(newId = null) {
         </p>
       </div>
       <div class="rec-actions">
+        <button class="icon-btn" data-act="edit" title="Trim and cut" aria-label="Trim and cut">${icon('scissors')}</button>
         <button class="icon-btn" data-act="open" title="Play" aria-label="Play">${icon('play')}</button>
         <button class="icon-btn" data-act="reveal" title="Show in folder" aria-label="Show in folder">${icon('reveal')}</button>
         <button class="icon-btn danger" data-act="delete" title="Delete" aria-label="Delete">${icon('trash')}</button>
@@ -351,6 +352,7 @@ function renderLibrary(newId = null) {
     const run = (cmd) => invoke(cmd, { id: r.id }).catch((e) => toast(errorText(e), 'error'));
     li.querySelector('.thumb').onclick = () => run('open_recording');
     li.querySelector('[data-act="open"]').onclick = () => run('open_recording');
+    li.querySelector('[data-act="edit"]').onclick = () => run('open_editor');
     li.querySelector('[data-act="reveal"]').onclick = () => run('reveal_recording');
     const del = li.querySelector('[data-act="delete"]');
     del.onclick = async () => {
@@ -470,10 +472,11 @@ async function init() {
   await listen('recording-saved', (rec) => {
     state.recordings = [rec, ...state.recordings.filter((r) => r.id !== rec.id)];
     renderLibrary(rec.id);
-    toast(`Saved "${rec.title}"`, 'ok', {
-      label: 'Show in folder',
-      run: () => invoke('reveal_recording', { id: rec.id }),
-    });
+    // A fresh recording offers the editor; an exported edit offers its folder.
+    const edited = rec.title.endsWith('(edited)') || / \(edited\) \(\d+\)$/.test(rec.title);
+    toast(`Saved "${rec.title}"`, 'ok', edited
+      ? { label: 'Show in folder', run: () => invoke('reveal_recording', { id: rec.id }) }
+      : { label: 'Trim and cut', run: () => invoke('open_editor', { id: rec.id }).catch((e) => toast(errorText(e), 'error')) });
     (state.warnings || []).forEach((w) => toast(w, 'error'));
     state.warnings = [];
   });
