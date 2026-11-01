@@ -163,3 +163,10 @@ The webcam bubble deliberately does.
 2. Hardware encoding and Desktop Duplication capture on Windows
 3. Screenshots with annotations
 4. System sound on macOS (ScreenCaptureKit) and Linux (PipeWire)
+
+## License
+
+Tallycast is released under the [MIT License](LICENSE).
+
+The Windows installer bundles a separate FFmpeg program, which keeps its own license
+(GPL for the Gyan builds). See "Build the installer" above before distributing it.

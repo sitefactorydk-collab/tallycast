@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "A fast, modern screen recorder built with Rust and Tauri",
+  "license": "MIT",
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build",

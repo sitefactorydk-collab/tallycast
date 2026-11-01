@@ -2,6 +2,7 @@
 name = "tallycast"
 version = "0.1.0"
 description = "Tallycast – a fast, modern screen recorder"
+license = "MIT"
 edition = "2021"
 rust-version = "1.77.2"
 
