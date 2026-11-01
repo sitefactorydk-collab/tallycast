@@ -22,8 +22,10 @@ Built for Windows, macOS and Linux, with Windows 11 as the first tested target.
   NVIDIA (NVENC) or Intel (Quick Sync) with Desktop Duplication capture; Tallycast then
   tests what works on your PC, checks the test recordings' picture, and falls back to
   the processor by itself if the graphics card path fails.
-- **Screenshots with annotations.** *Screenshot* (or `Alt+Shift+S` from anywhere) grabs
-  the whole display or an area you drag out and opens it in *Annotate*: arrows, boxes,
+- **Screenshots with annotations.** *Screenshot* (or `Alt+Shift+S` from anywhere, on the
+  display the mouse is on) freezes the screen first, like the Snipping Tool, so hover
+  menus and tooltips stay in the picture; then you drag out an area on the frozen image
+  (or press Enter for all of it). It opens in *Annotate*: arrows, boxes,
   highlights, text and blur, in six colours and three sizes, with select/move/delete and
   undo. *Save* writes the PNG next to your videos; *Copy* puts it on the clipboard. The
   untouched capture is kept, so a screenshot can be reopened and its marks changed later.

@@ -49,6 +49,8 @@ struct Pending {
     area: bool,
     /// A screenshot rather than a recording.
     shot: bool,
+    /// For screenshots: the whole display, grabbed before any Tallycast window showed.
+    frozen: Option<PathBuf>,
     settings: Settings,
     ffmpeg: PathBuf,
 }
@@ -173,14 +175,27 @@ fn begin(app: &AppHandle, mode: &str, monitor: usize, shot: bool) -> Result<(), 
             return Err("A recording is already in progress.".into());
         }
         g.phase = if area { Phase::Selecting } else { Phase::Countdown };
-        g.pending =
-            Some(Pending { monitor: mon.clone(), rect: None, area, shot, settings: s.clone(), ffmpeg: ff });
+        g.pending = Some(Pending {
+            monitor: mon.clone(),
+            rect: None,
+            area,
+            shot,
+            frozen: None,
+            settings: s.clone(),
+            ffmpeg: ff.clone(),
+        });
     }
 
-    // Screenshots don't change what the record hotkey does next.
-    if !shot {
-        s.last_mode = if area { "area".into() } else { "screen".into() };
+    if shot {
+        let result = freeze_and_shoot(app, &ff, &mon, area);
+        if let Err(e) = &result {
+            abort(app, e);
+        }
+        return result;
     }
+
+    // Screenshots leave these alone: they follow the mouse, not the record settings.
+    s.last_mode = if area { "area".into() } else { "screen".into() };
     s.last_monitor = mon.index;
     let _ = settings::save(app, &s);
 
@@ -188,9 +203,7 @@ fn begin(app: &AppHandle, mode: &str, monitor: usize, shot: bool) -> Result<(), 
     thread::sleep(Duration::from_millis(250)); // let the main window disappear
 
     let result = if area {
-        wins::open_overlay(app, &mon, shot)
-    } else if shot {
-        shoot(app, CaptureRect::from_monitor(&mon))
+        wins::open_overlay(app, &mon, false, None)
     } else {
         proceed(app, CaptureRect::from_monitor(&mon))
     };
@@ -219,7 +232,34 @@ pub fn region_selected(app: &AppHandle, x: i32, y: i32, width: u32, height: u32)
     result
 }
 
-/// Grabs the still, then opens it for annotation.
+/// Grabs the whole display *before* showing any window of ours, so nothing on screen
+/// changes first: a hover menu or tooltip in another app keeps its focus and stays open.
+/// An area is then chosen on that frozen picture.
+fn freeze_and_shoot(
+    app: &AppHandle,
+    ff: &std::path::Path,
+    mon: &MonitorInfo,
+    area: bool,
+) -> Result<(), String> {
+    // Only wait when our own window has to get out of the picture first.
+    if wins::main_visible(app) {
+        wins::hide_main(app);
+        thread::sleep(Duration::from_millis(250));
+    }
+    let frozen = std::env::temp_dir().join(format!("tallycast-freeze-{}.png", util::now_ms()));
+    ffmpeg::screenshot(ff, CaptureRect::from_monitor(mon), mon, &frozen)?;
+    if let Some(p) = lock(app).pending.as_mut() {
+        p.frozen = Some(frozen.clone());
+    }
+    if area {
+        let url = crate::editor::media_url(app, &frozen).ok();
+        wins::open_overlay(app, mon, true, url.as_deref())
+    } else {
+        shoot(app, CaptureRect::from_monitor(mon))
+    }
+}
+
+/// Makes the still (from the frozen display, or a fresh grab), then opens it for annotation.
 fn shoot(app: &AppHandle, rect: CaptureRect) -> Result<(), String> {
     let p = {
         let mut g = lock(app);
@@ -227,9 +267,11 @@ fn shoot(app: &AppHandle, rect: CaptureRect) -> Result<(), String> {
         g.pending.clone()
     }
     .ok_or("No capture is pending.")?;
-    // Let the overlay and main window finish disappearing.
-    thread::sleep(Duration::from_millis(180));
-    let result = crate::shot::take(app, &p.ffmpeg, rect, &p.monitor, &p.settings);
+    if p.frozen.is_none() {
+        // Let the overlay and main window finish disappearing.
+        thread::sleep(Duration::from_millis(180));
+    }
+    let result = crate::shot::take(app, &p.ffmpeg, rect, &p.monitor, &p.settings, p.frozen.as_deref());
     reset(app);
     wins::show_main(app);
     let rec = result?;
@@ -455,10 +497,15 @@ pub fn cancel(app: &AppHandle) {
 }
 
 fn reset(app: &AppHandle) {
-    let mut g = lock(app);
-    g.phase = Phase::Idle;
-    g.pending = None;
-    g.session = None;
+    let frozen = {
+        let mut g = lock(app);
+        g.phase = Phase::Idle;
+        g.session = None;
+        g.pending.take().and_then(|p| p.frozen)
+    };
+    if let Some(f) = frozen {
+        let _ = std::fs::remove_file(f);
+    }
 }
 
 /// Something failed before or while starting: tidy up and bring the main window back.
@@ -482,13 +529,13 @@ pub fn report(app: &AppHandle, result: Result<(), String>) {
     }
 }
 
-/// Global hotkey: drag out an area to screenshot on the last-used display.
+/// Global hotkey: freeze the display the mouse is on and drag out an area.
 pub fn hotkey_screenshot(app: &AppHandle) {
     if lock(app).phase != Phase::Idle {
         return;
     }
-    let s = settings::load(app);
-    report(app, begin_screenshot(app, "area", s.last_monitor));
+    let monitor = wins::monitor_under_cursor(app).unwrap_or_else(|| settings::load(app).last_monitor);
+    report(app, begin_screenshot(app, "area", monitor));
 }
 
 /// Global hotkey: start with the last-used source, or stop if recording.

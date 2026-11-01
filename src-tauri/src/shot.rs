@@ -64,11 +64,28 @@ pub fn take(
     rect: CaptureRect,
     monitor: &MonitorInfo,
     s: &Settings,
+    frozen: Option<&Path>,
 ) -> Result<Recording, String> {
     let created = chrono::Local::now();
     let id = util::now_ms().to_string();
     let original = original_path(app, &id)?;
-    ffmpeg::screenshot(ff, rect, monitor, &original)?;
+    match frozen {
+        // The whole display was grabbed the moment the screenshot began; cut the area
+        // out of that, so hover menus and tooltips are exactly as they were.
+        Some(f) if rect == crate::recorder::CaptureRect::from_monitor(monitor) => {
+            fs::copy(f, &original).map_err(|e| format!("Could not save the screenshot ({e})."))?;
+        }
+        Some(f) => ffmpeg::crop_png(
+            ff,
+            f,
+            rect.x - monitor.x,
+            rect.y - monitor.y,
+            rect.width,
+            rect.height,
+            &original,
+        )?,
+        None => ffmpeg::screenshot(ff, rect, monitor, &original)?,
+    }
 
     let dir = settings::output_dir(app, s);
     fs::create_dir_all(&dir).map_err(|e| format!("Could not create the output folder ({e})."))?;

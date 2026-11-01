@@ -67,6 +67,48 @@ pub fn monitors(app: &AppHandle) -> Result<Vec<MonitorInfo>, String> {
     Ok(out)
 }
 
+pub fn main_visible(app: &AppHandle) -> bool {
+    app.get_webview_window(MAIN)
+        .map(|w| w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(false))
+        .unwrap_or(false)
+}
+
+/// The display the mouse pointer is on (Windows), as an index into `monitors`.
+pub fn monitor_under_cursor(app: &AppHandle) -> Option<usize> {
+    let (x, y) = cursor::position()?;
+    monitors(app).ok()?.into_iter().find_map(|m| {
+        (x >= m.x && y >= m.y && x < m.x + m.width as i32 && y < m.y + m.height as i32).then_some(m.index)
+    })
+}
+
+#[cfg(windows)]
+mod cursor {
+    #[repr(C)]
+    struct Point {
+        x: i32,
+        y: i32,
+    }
+
+    #[link(name = "user32")]
+    extern "system" {
+        fn GetCursorPos(point: *mut Point) -> i32;
+    }
+
+    /// Physical desktop pixels (the app is per-monitor DPI aware).
+    pub fn position() -> Option<(i32, i32)> {
+        let mut p = Point { x: 0, y: 0 };
+        // SAFETY: GetCursorPos only writes the POINT it is given.
+        (unsafe { GetCursorPos(&mut p) } != 0).then_some((p.x, p.y))
+    }
+}
+
+#[cfg(not(windows))]
+mod cursor {
+    pub fn position() -> Option<(i32, i32)> {
+        None
+    }
+}
+
 pub fn hide_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(MAIN) {
         let _ = w.hide();
@@ -147,13 +189,24 @@ fn make(app: &AppHandle, s: Spec) -> Result<WebviewWindow, String> {
 }
 
 /// Full-monitor transparent overlay where the user drags out an area.
-/// `shot` changes the wording from recording to screenshot.
-pub fn open_overlay(app: &AppHandle, mon: &MonitorInfo, shot: bool) -> Result<(), String> {
+/// `shot` changes the wording from recording to screenshot; `frozen` is the URL of the
+/// display as it was grabbed, shown behind the selection.
+pub fn open_overlay(
+    app: &AppHandle,
+    mon: &MonitorInfo,
+    shot: bool,
+    frozen: Option<&str>,
+) -> Result<(), String> {
+    let url = match (shot, frozen) {
+        (true, Some(bg)) => format!("overlay.html?shot=1&bg={}", bg.replace('&', "%26")),
+        (true, None) => "overlay.html?shot=1".to_string(),
+        _ => "overlay.html".to_string(),
+    };
     make(
         app,
         Spec {
             label: OVERLAY,
-            url: if shot { "overlay.html?shot=1" } else { "overlay.html" },
+            url: &url,
             title: "Select an area",
             x: mon.x,
             y: mon.y,

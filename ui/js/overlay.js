@@ -9,8 +9,24 @@ const cy = document.getElementById('cy');
 
 const MIN = 24; // CSS px
 
-// The same overlay picks the area for a screenshot.
-if (new URLSearchParams(location.search).get('shot')) {
+// The same overlay picks the area for a screenshot, on the frozen display.
+const params = new URLSearchParams(location.search);
+const frozen = params.get('bg');
+if (frozen) {
+  // Stay invisible until the frozen picture is ready, so the dimming never lands on
+  // the live screen behind it.
+  overlay.style.visibility = 'hidden';
+  const img = new Image();
+  const show = () => { overlay.style.visibility = ''; };
+  img.onload = () => {
+    overlay.style.background = `#000 url("${frozen}") 0 0 / 100% 100% no-repeat`;
+    show();
+  };
+  img.onerror = show;
+  img.src = frozen;
+  setTimeout(show, 1500);
+}
+if (params.get('shot')) {
   document.querySelector('.hint strong').textContent = 'Drag to select the area to capture';
   document.querySelector('.hint span').textContent = 'Press Enter to capture the whole screen. Press Esc to cancel.';
   document.getElementById('go').innerHTML = 'Capture this area';

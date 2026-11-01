@@ -184,6 +184,27 @@ fn grab_crop(r: CaptureRect, m: &MonitorInfo) -> Option<String> {
     cfg!(target_os = "macos").then(|| format!("crop={}:{}:{}:{}", r.width, r.height, r.x - m.x, r.y - m.y))
 }
 
+/// Cuts `w`×`h` at (`x`, `y`) out of a PNG into a new opaque PNG.
+pub fn crop_png(ffmpeg: &Path, src: &Path, x: i32, y: i32, w: u32, h: u32, out: &Path) -> Result<(), String> {
+    let output = command(ffmpeg)
+        .args(["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-i"])
+        .arg(src)
+        .args(["-vf", &format!("crop={w}:{h}:{}:{}", x.max(0), y.max(0))])
+        .args(["-frames:v", "1", "-pix_fmt", "rgb24", "-update", "1"])
+        .arg(out)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("Could not run FFmpeg ({e})."))?;
+    if output.status.success() && out.exists() {
+        Ok(())
+    } else {
+        Err(format!(
+            "The screenshot could not be cropped.\n\n{}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    }
+}
+
 /// Grabs one frame of `r` as an opaque PNG, without the mouse pointer.
 pub fn screenshot(ffmpeg: &Path, r: CaptureRect, monitor: &MonitorInfo, out: &Path) -> Result<(), String> {
     let mut a: Vec<String> = vec![s("-hide_banner"), s("-loglevel"), s("error"), s("-nostdin"), s("-y")];
