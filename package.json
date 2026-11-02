@@ -1,7 +1,7 @@
 {
   "name": "tallycast",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A fast, modern screen recorder built with Rust and Tauri",
   "license": "MIT",
   "scripts": {
