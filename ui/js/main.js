@@ -662,15 +662,79 @@ function openLink(url) {
   invoke('open_url', { url }).catch((e) => toast(errorText(e), 'error'));
 }
 
+let updating = false;
+
+/** While an update runs, the banner shows only its progress. */
+function setUpdateButtons(busy) {
+  ['#update-download', '#update-notes', '#update-later'].forEach((sel) => { $(sel).hidden = busy; });
+}
+
+/**
+ * Downloads, verifies and installs the update inside the app. Tallycast closes, the
+ * installer runs with a small progress window, and Tallycast starts again. If that route
+ * isn't available (e.g. the release has no signed update files), the installer opens in
+ * the browser instead, as before.
+ */
+async function installUpdate(latest, setupUrl) {
+  if (updating) return;
+  updating = true;
+  setUpdateButtons(true);
+  const sub = $('#update-sub');
+  const button = $('#update-download');
+  $('#update-title').textContent = `Updating to Tallycast ${latest}…`;
+  sub.textContent = 'Downloading…';
+  const unlisten = [
+    await listen('update-progress', ({ downloaded, total }) => {
+      sub.textContent = total
+        ? `Downloading… ${Math.min(100, Math.round((downloaded / total) * 100))} %`
+        : `Downloading… ${(downloaded / 1e6).toFixed(1)} MB`;
+    }),
+    await listen('update-installing', () => {
+      sub.textContent = 'Installing. Tallycast closes now and opens again when it is done.';
+    }),
+  ];
+  const restore = () => {
+    unlisten.forEach((off) => { try { off(); } catch { /* already gone */ } });
+    updating = false;
+    setUpdateButtons(false);
+    $('#update-title').textContent = `Tallycast ${latest} is available.`;
+    button.hidden = false;
+  };
+  try {
+    const started = await invoke('install_update');
+    if (!started) {
+      restore();
+      sub.textContent = 'This version can\'t be installed from inside Tallycast. The installer is downloading in your browser instead.';
+      if (setupUrl) openLink(setupUrl);
+    }
+    // Otherwise Tallycast is closing for the installer.
+  } catch (e) {
+    restore();
+    const msg = errorText(e);
+    if (/close the editor/i.test(msg)) {
+      sub.textContent = msg;
+      return;
+    }
+    sub.textContent = setupUrl
+      ? 'The update could not be installed from inside Tallycast, so the installer is downloading in your browser instead.'
+      : 'The update could not be installed. Try again in a few minutes.';
+    toast(`Update failed: ${msg}`, 'error');
+    if (setupUrl) openLink(setupUrl);
+  }
+}
+
 function showUpdate(release, latest) {
+  if (updating) return;
   const current = state.env.appVersion;
   const setup = (release.assets || []).find((a) => /-setup\.exe$/i.test(a.name));
   $('#update-title').textContent = `Tallycast ${latest} is available.`;
   $('#update-sub').textContent = setup
-    ? `You have ${current}. Download the installer and run it; your recordings and settings stay as they are.`
-    : `You have ${current}. The installer for this version is still being built; try again in a few minutes.`;
-  $('#update-download').hidden = !setup;
-  $('#update-download').onclick = () => setup && openLink(setup.browser_download_url);
+    ? `You have ${current}. Update now: Tallycast restarts in about a minute, with your recordings and settings as they are.`
+    : `You have ${current}. This version is still being built; try again in a few minutes.`;
+  const button = $('#update-download');
+  button.hidden = !setup;
+  button.innerHTML = `${icon('download')}Update now`;
+  button.onclick = () => installUpdate(latest, setup?.browser_download_url);
   $('#update-notes').onclick = () => openLink(release.html_url);
   $('#update-later').onclick = () => {
     try { localStorage.setItem(SKIP_KEY, latest); } catch { /* storage unavailable */ }

@@ -1,6 +1,6 @@
 # Builds the Windows installer and publishes it as a GitHub Release whenever a version
-# tag (v0.2.0, v0.3.1, …) is pushed. Tallycast checks this repository's latest release
-# at start-up and offers the installer when it is newer than the running version.
+# tag (v0.2.0, v0.3.1, …) is pushed, together with the signed update files (latest.json
+# and the installer's .sig) that Tallycast's in-app updater reads.
 #
 # To publish a version, run on your PC:  npm.cmd run release -- 0.2.0
 # (scripts/release.ps1 bumps the version, commits, tags and pushes).
@@ -65,11 +65,23 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the installer for in-app updates. The key stays on the owner's PC and in
+          # these repository secrets; the app checks downloads against the public key in
+          # tauri.conf.json.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
+          # Only release builds make the signed update files (.sig + latest.json), so a
+          # local `npm.cmd run build` keeps working without the key.
+          args: --config src-tauri/tauri.updater.conf.json
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
           tagName: ${{ github.ref_name }}
           releaseName: Tallycast ${{ github.ref_name }}
           releaseBody: |
-            **To install or update:** download `Tallycast___VERSION___x64-setup.exe` below and run it. Your recordings, screenshots and settings stay as they are.
+            **Already have Tallycast 0.4.0 or later?** It updates itself: choose **Update now** when it tells you about this version.
+
+            **To install, or update from an older version:** download `Tallycast___VERSION___x64-setup.exe` below and run it. Your recordings, screenshots and settings stay as they are.
 
             Windows may say "Windows protected your PC" because the installer isn't code-signed: choose **More info › Run anyway**.
           releaseDraft: false

@@ -136,6 +136,17 @@ function mock(cmd, args) {
         outputDir: 'C:\\Users\\you\\Videos\\Tallycast', recordHotkey: 'Alt+Shift+R', pauseHotkey: 'Alt+Shift+P', shotHotkey: 'Alt+Shift+S', appVersion: '0.1.0', repo: 'sitefactorydk-collab/tallycast',
       };
     case 'get_settings': return { ...mockSettings };
+    case 'install_update':
+      // Pretend to download a 31 MB installer; the real app then closes for the installer.
+      return new Promise(() => {
+        const total = 31_000_000;
+        let got = 0;
+        const timer = setInterval(() => {
+          got = Math.min(total, got + 2_400_000);
+          mockEmit('update-progress', { downloaded: got, total });
+          if (got >= total) { clearInterval(timer); mockEmit('update-installing', null); }
+        }, 120);
+      });
     case 'get_engines':
       return {
         supported: true, ffmpegVersion: 'ffmpeg version 8.0-essentials_build-www.gyan.dev',

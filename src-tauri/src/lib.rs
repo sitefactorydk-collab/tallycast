@@ -94,6 +94,49 @@ async fn open_url(app: AppHandle, url: String) -> Result<(), String> {
     .await
 }
 
+/// Downloads the newest release from inside the app, checks its signature against the
+/// public key in tauri.conf.json, and runs the installer. On Windows the installer closes
+/// Tallycast, updates it without questions and starts it again. Progress arrives as
+/// `update-progress` events, then `update-installing`.
+///
+/// Returns `false` when the update feed has nothing newer (e.g. a release built before
+/// in-app updates existed); the window then offers the installer download instead.
+#[tauri::command]
+async fn install_update(app: AppHandle) -> Result<bool, String> {
+    use tauri::{Emitter, Manager};
+    use tauri_plugin_updater::UpdaterExt;
+
+    // Annotate saves when its window closes, and the editor may be exporting: quitting
+    // under them would lose work.
+    if app.get_webview_window(wins::EDITOR).is_some() || app.get_webview_window(wins::SHOT).is_some() {
+        return Err("Close the Editor and Annotate windows first so your work is saved, \
+                    then choose Update now again."
+            .into());
+    }
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    let Some(update) = updater.check().await.map_err(|e| e.to_string())? else {
+        return Ok(false);
+    };
+    let progress = app.clone();
+    let finished = app.clone();
+    let mut downloaded: u64 = 0;
+    update
+        .download_and_install(
+            move |chunk, total| {
+                downloaded += chunk as u64;
+                let _ = progress
+                    .emit("update-progress", serde_json::json!({ "downloaded": downloaded, "total": total }));
+            },
+            move || {
+                let _ = finished.emit("update-installing", ());
+            },
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    // Windows exits during the install step and never gets here; elsewhere, restart.
+    app.restart()
+}
+
 #[tauri::command]
 async fn pick_folder(app: AppHandle) -> Result<Option<String>, String> {
     blocking(app, |app| {
@@ -274,6 +317,7 @@ async fn set_webcam_size(app: AppHandle, size: String) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
@@ -312,6 +356,7 @@ pub fn run() {
             save_settings,
             get_engines,
             open_url,
+            install_update,
             pick_folder,
             pick_ffmpeg,
             list_recordings,
