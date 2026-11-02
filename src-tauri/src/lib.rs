@@ -1,6 +1,7 @@
 //! Tallycast — a cross-platform screen recorder built on Tauri.
 
 mod audio;
+mod cursorfx;
 mod dxgi;
 mod edit;
 mod editor;

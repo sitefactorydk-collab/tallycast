@@ -34,6 +34,16 @@ pub struct Settings {
     pub encoder: String,
     /// Screen capture on Windows: "auto" | "ddagrab" | "gdigrab".
     pub capture: String,
+    /// A soft circle that follows the mouse pointer in recordings (Windows).
+    pub cursor_halo: bool,
+    /// Halo colour as "#rrggbb".
+    pub halo_color: String,
+    /// A ripple around the pointer on every click in recordings (Windows).
+    pub click_effects: bool,
+    /// Ripple colour as "#rrggbb".
+    pub click_color: String,
+    /// Size of the halo and ripples: "s" | "m" | "l".
+    pub cursor_fx_size: String,
 }
 
 impl Default for Settings {
@@ -55,6 +65,11 @@ impl Default for Settings {
             last_monitor: 0,
             encoder: "auto".into(),
             capture: "auto".into(),
+            cursor_halo: false,
+            halo_color: "#ffd60a".into(),
+            click_effects: false,
+            click_color: "#e23b3e".into(),
+            cursor_fx_size: "m".into(),
         }
     }
 }

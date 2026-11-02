@@ -8,7 +8,7 @@ use crate::library::{self, Recording};
 use crate::recorder::{CaptureRect, RecordConfig, Session};
 use crate::settings::{self, Settings};
 use crate::wins::{self, MonitorInfo};
-use crate::{audio, engine, ffmpeg, util};
+use crate::{audio, cursorfx, engine, ffmpeg, util};
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
@@ -311,6 +311,10 @@ fn proceed(app: &AppHandle, rect: CaptureRect) -> Result<(), String> {
             eprintln!("[tallycast] area outline: {e}");
         }
     }
+    // Shown from the countdown on, so it is already on the pointer when recording starts.
+    if let Err(e) = cursorfx::start(app, s, &pending.monitor) {
+        eprintln!("[tallycast] pointer effects: {e}");
+    }
     if s.countdown > 0 {
         wins::open_countdown(app, &rect, &pending.monitor)
     } else {
@@ -452,6 +456,7 @@ pub fn stop_recording(app: &AppHandle) -> Result<(), String> {
 
     wins::close(app, wins::WEBCAM);
     wins::close(app, wins::FRAME);
+    wins::close(app, wins::CURSOR);
 
     let rect = session.rect();
     let created = chrono::Local::now();

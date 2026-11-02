@@ -45,6 +45,8 @@ const paths = {
   annotate: '<path d="M14.5 5.5 18.5 9.5 9 19H5v-4z"/><path d="M12.5 7.5l4 4"/>',
   open: '<path d="M13.5 4.5h6v6M19.5 4.5 11 13"/><path d="M18 13.5v4.5a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 5 18V8a1.5 1.5 0 0 1 1.5-1.5H11"/>',
   download: '<path d="M12 4.5V15M7.8 10.8 12 15l4.2-4.2"/><path d="M5 15.5v2A2.5 2.5 0 0 0 7.5 20h9a2.5 2.5 0 0 0 2.5-2.5v-2"/>',
+  halo: '<circle cx="10" cy="10" r="6.5"/><path d="M10 10l9 3.6-3.9 1.3-1.4 4z"/>',
+  click: '<path d="M10 10l9 3.6-3.9 1.3-1.4 4z"/><path d="M10 3.5V6M4.6 5.6l1.7 1.7M3.5 10H6M15.4 5.6l-1.7 1.7"/>',
   grip: '<circle cx="9" cy="7" r=".9"/><circle cx="15" cy="7" r=".9"/><circle cx="9" cy="12" r=".9"/><circle cx="15" cy="12" r=".9"/><circle cx="9" cy="17" r=".9"/><circle cx="15" cy="17" r=".9"/>',
 };
 

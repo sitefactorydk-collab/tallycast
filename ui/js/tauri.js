@@ -34,6 +34,7 @@ const mockSettings = {
   micEnabled: true, micDevice: null, systemAudio: true,
   webcamEnabled: false, webcamDevice: null, webcamSize: 'm',
   ffmpegPath: null, lastMode: 'screen', lastMonitor: 0, encoder: 'auto', capture: 'auto',
+  cursorHalo: true, haloColor: '#ffd60a', clickEffects: true, clickColor: '#e23b3e', cursorFxSize: 'm',
 };
 
 function mockThumb(hue) {

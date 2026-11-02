@@ -1066,3 +1066,71 @@ h2 {
 .rec:has(.armed) .rec-actions {
   opacity: 1;
 }
+
+/* ───────────── mouse pointer effects ───────────── */
+
+.swatches {
+  display: flex;
+  gap: 5px;
+  flex: none;
+}
+
+.swatches button {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  background: var(--c);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+}
+
+.swatches button[aria-checked="true"] {
+  border-color: var(--paper);
+  box-shadow: 0 0 0 2px var(--cobalt), inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+
+.swatches.off {
+  opacity: 0.35;
+}
+
+.fx-pad {
+  position: relative;
+  height: 112px;
+  margin-top: 6px;
+  border-radius: var(--radius-m);
+  background:
+    radial-gradient(circle, color-mix(in srgb, var(--ink) 13%, transparent) 1px, transparent 1.4px) 0 0 / 14px 14px,
+    var(--paper-2);
+  border: 1px solid var(--line);
+  overflow: hidden;
+  user-select: none;
+}
+
+.fx-pad-hint {
+  position: absolute;
+  left: 12px;
+  bottom: 9px;
+  font-size: var(--t-xs);
+  color: var(--mist);
+  pointer-events: none;
+}
+
+.fx-size {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+}
+
+#fx-preview {
+  position: absolute;
+  left: 0;
+  top: 0;
+  visibility: hidden;
+}
+
+.fx-pad.live #fx-preview {
+  visibility: visible;
+}

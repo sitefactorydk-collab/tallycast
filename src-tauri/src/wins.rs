@@ -21,6 +21,7 @@ pub const WEBCAM: &str = "webcam";
 pub const FRAME: &str = "frame";
 pub const EDITOR: &str = "editor";
 pub const SHOT: &str = "shot";
+pub const CURSOR: &str = "cursor";
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -130,7 +131,7 @@ pub fn close(app: &AppHandle, label: &str) {
 }
 
 pub fn close_helpers(app: &AppHandle) {
-    for label in [OVERLAY, COUNTDOWN, RECBAR, WEBCAM, FRAME] {
+    for label in [OVERLAY, COUNTDOWN, RECBAR, WEBCAM, FRAME, CURSOR] {
         close(app, label);
     }
 }
@@ -286,6 +287,30 @@ pub fn open_frame(app: &AppHandle, rect: &CaptureRect, scale: f64) -> Result<(),
     )?;
     let _ = win.set_ignore_cursor_events(true);
     Ok(())
+}
+
+/// The cursor halo / click effect window: `size` physical pixels square, centred on the
+/// pointer, click-through and *not* excluded from capture (it is part of the video).
+/// `cursorfx` keeps it on the pointer from then on.
+pub fn open_cursor(app: &AppHandle, url: &str, size: u32, scale: f64) -> Result<WebviewWindow, String> {
+    let (cx, cy) = cursor::position().unwrap_or((0, 0));
+    let win = make(
+        app,
+        Spec {
+            label: CURSOR,
+            url,
+            title: "Pointer effects",
+            x: cx - size as i32 / 2,
+            y: cy - size as i32 / 2,
+            w: size,
+            h: size,
+            scale,
+            protect: false,
+            focus: false,
+        },
+    )?;
+    win.set_ignore_cursor_events(true).map_err(|e| e.to_string())?;
+    Ok(win)
 }
 
 pub fn webcam_diameter(size: &str) -> f64 {

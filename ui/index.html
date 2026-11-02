@@ -6,6 +6,7 @@
   <title>Tallycast</title>
   <link rel="stylesheet" href="css/base.css" />
   <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/cursorfx.css" />
 </head>
 <body>
   <header class="titlebar" data-tauri-drag-region>
@@ -86,6 +87,37 @@
           <div class="cam-preview" id="cam-preview" hidden>
             <video id="cam-video" autoplay muted playsinline></video>
             <p>The bubble floats over your screen and is recorded with it. Drag it anywhere while recording.</p>
+          </div>
+        </div>
+
+        <div class="group" id="pointer-group" hidden>
+          <h2>Mouse pointer</h2>
+          <div class="row">
+            <i data-icon="halo" class="row-icon"></i>
+            <div class="row-label">
+              <label for="halo-toggle">Cursor halo</label>
+              <span class="row-hint">A soft circle that follows the pointer</span>
+            </div>
+            <div class="swatches" id="halo-colors" role="radiogroup" aria-label="Halo colour"></div>
+            <label class="switch"><input type="checkbox" id="halo-toggle" /><span aria-hidden="true"></span><span class="visually-hidden">Show a cursor halo</span></label>
+          </div>
+          <div class="row">
+            <i data-icon="click" class="row-icon"></i>
+            <div class="row-label">
+              <label for="click-toggle">Click effects</label>
+              <span class="row-hint">A ripple each time you click</span>
+            </div>
+            <div class="swatches" id="click-colors" role="radiogroup" aria-label="Click colour"></div>
+            <label class="switch"><input type="checkbox" id="click-toggle" /><span aria-hidden="true"></span><span class="visually-hidden">Show click effects</span></label>
+          </div>
+          <div class="fx-pad" id="fx-pad" hidden>
+            <span class="fx-pad-hint">Move the pointer and click here to try it</span>
+            <div class="segmented segmented-small fx-size" role="radiogroup" aria-label="Pointer effect size">
+              <button role="radio" data-fxsize="s" aria-checked="false">S</button>
+              <button role="radio" data-fxsize="m" aria-checked="true">M</button>
+              <button role="radio" data-fxsize="l" aria-checked="false">L</button>
+            </div>
+            <div id="fx-preview" aria-hidden="true"></div>
           </div>
         </div>
 

@@ -1,0 +1,57 @@
+/* Cursor halo and click ripples (see js/cursorfx.js). Everything is centred in .cfx;
+   the halo is 1 / SPAN of its width, the ripple grows to the full width. */
+
+.cfx {
+  --cfx-halo: #ffd60a;
+  --cfx-click: #e23b3e;
+  pointer-events: none;
+  transition: opacity 0.12s;
+}
+
+.cfx-gone {
+  opacity: 0;
+}
+
+.cfx > * {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.cfx-halo {
+  left: 27.27%;
+  top: 27.27%;
+  width: 45.46%;
+  height: 45.46%;
+  background: color-mix(in srgb, var(--cfx-halo) 45%, transparent);
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--cfx-halo) 75%, transparent);
+}
+
+.cfx-ring {
+  inset: 0;
+  border: 3.5px solid var(--cfx-click);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+.cfx-flash {
+  inset: 0;
+  background: color-mix(in srgb, var(--cfx-click) 55%, transparent);
+}
+
+/* A dot under the pointer while a button is held, so drags read clearly. */
+.cfx-held {
+  left: 39%;
+  top: 39%;
+  width: 22%;
+  height: 22%;
+  background: color-mix(in srgb, var(--cfx-click) 55%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--cfx-click) 85%, transparent);
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.1s, transform 0.12s;
+}
+
+.cfx-held.on {
+  opacity: 1;
+  transform: scale(1);
+}

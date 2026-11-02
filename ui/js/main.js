@@ -1,5 +1,6 @@
 import { invoke, listen, currentWindow, isTauri } from './tauri.js';
 import { icon, hydrateIcons } from './icons.js';
+import { mountFx, HALO_SIZES, SPAN, HALO_COLORS, CLICK_COLORS } from './cursorfx.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -299,6 +300,75 @@ function wireVideo() {
   document.querySelectorAll('[data-mode]').forEach((b) => {
     b.onclick = () => { state.mode = b.dataset.mode; updateSettings({ lastMode: state.mode }); renderMode(); };
   });
+}
+
+// ───────────────────────────── mouse pointer effects ─────────────────────────────
+
+let pointerFx = null;
+
+function renderSwatches(el, colors, current, enabled, pick) {
+  const cur = String(current || '').toLowerCase();
+  el.innerHTML = colors
+    .map((c) => `<button type="button" role="radio" style="--c:${c.value}" title="${c.name}" aria-label="${c.name}" aria-checked="${c.value === cur}" data-color="${c.value}"></button>`)
+    .join('');
+  el.classList.toggle('off', !enabled);
+  el.querySelectorAll('button').forEach((b) => { b.onclick = () => pick(b.dataset.color); });
+}
+
+function renderPointer() {
+  const s = state.settings;
+  // The effects follow the pointer with Windows calls; other systems don't have them yet.
+  $('#pointer-group').hidden = state.env?.os !== 'windows';
+  $('#halo-toggle').checked = Boolean(s.cursorHalo);
+  $('#click-toggle').checked = Boolean(s.clickEffects);
+  // Picking a colour also switches that effect on.
+  renderSwatches($('#halo-colors'), HALO_COLORS, s.haloColor, s.cursorHalo, (c) => {
+    updateSettings({ haloColor: c, cursorHalo: true });
+    renderPointer();
+  });
+  renderSwatches($('#click-colors'), CLICK_COLORS, s.clickColor, s.clickEffects, (c) => {
+    updateSettings({ clickColor: c, clickEffects: true });
+    renderPointer();
+  });
+  const size = HALO_SIZES[s.cursorFxSize] ? s.cursorFxSize : 'm';
+  setChecked($('.fx-size'), 'data-fxsize', size);
+  $('#fx-pad').hidden = !(s.cursorHalo || s.clickEffects);
+  const box = $('#fx-preview');
+  box.style.width = box.style.height = `${HALO_SIZES[size] * SPAN}px`;
+  pointerFx.set({
+    halo: Boolean(s.cursorHalo),
+    click: Boolean(s.clickEffects),
+    haloColor: s.haloColor,
+    clickColor: s.clickColor,
+  });
+}
+
+function wirePointer() {
+  const pad = $('#fx-pad');
+  const box = $('#fx-preview');
+  pointerFx = mountFx(box);
+  $('#halo-toggle').onchange = (e) => { updateSettings({ cursorHalo: e.target.checked }); renderPointer(); };
+  $('#click-toggle').onchange = (e) => { updateSettings({ clickEffects: e.target.checked }); renderPointer(); };
+  document.querySelectorAll('[data-fxsize]').forEach((b) => {
+    b.onclick = () => { updateSettings({ cursorFxSize: b.dataset.fxsize }); renderPointer(); };
+  });
+
+  // The preview pad shows the effect under the real pointer, as it will look in a video.
+  const place = (e) => {
+    const r = pad.getBoundingClientRect();
+    const half = box.offsetWidth / 2;
+    box.style.transform = `translate(${e.clientX - r.left - half}px, ${e.clientY - r.top - half}px)`;
+    pad.classList.add('live');
+  };
+  pad.addEventListener('pointermove', place);
+  pad.addEventListener('pointerleave', () => { pad.classList.remove('live'); pointerFx.up(); });
+  pad.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.fx-size')) return;
+    place(e);
+    pointerFx.down(e.button === 2 ? 'right' : 'left');
+  });
+  pad.addEventListener('pointerup', () => pointerFx.up());
+  pad.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
 // ───────────────────────────── video engine ─────────────────────────────
@@ -648,6 +718,7 @@ async function init() {
   wireAudio();
   wireWebcam();
   wireVideo();
+  wirePointer();
   wireSettings();
   wireEngines();
   $('#record-btn').onclick = () => startCapture().catch((e) => toast(errorText(e), 'error'));
@@ -664,6 +735,7 @@ async function init() {
   renderMode();
   renderAudio();
   renderVideo();
+  renderPointer();
   loadEngines();
   if (state.env.wayland) {
     toast('Recording on Wayland is not supported yet. Log in with an X11 session to record.', 'error');
